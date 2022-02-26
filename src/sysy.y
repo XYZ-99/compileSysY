@@ -1,6 +1,7 @@
 %code requires {
   #include <memory>
   #include <string>
+  #include "headers/ast.h"
 }
 
 %{
