@@ -19,7 +19,6 @@ using namespace std;
 /* 空白符和注释 */
 WhiteSpace    [ \t\n\r]*
 LineComment   "//".*$
-/* TODO: BlockComment */
 
 /* 标识符 */
 Identifier    [a-zA-Z_][a-zA-Z0-9_]*
@@ -29,10 +28,20 @@ Decimal       [1-9][0-9]*
 Octal         0[0-7]*
 Hexadecimal   0[xX][0-9a-fA-F]+
 
+/* Exclusive start condition */
+%x COMMENT_STATE_0 COMMENT_STATE_1
+
 %%
 
 {WhiteSpace}    { /* 忽略, 不做任何操作 */ }
 {LineComment}   { /* 忽略, 不做任何操作 */ }
+
+"/*"                        { BEGIN(COMMENT_STATE_0); }
+<COMMENT_STATE_0>"*"        { BEGIN(COMMENT_STATE_1); }
+<COMMENT_STATE_0>[^*]       { }
+<COMMENT_STATE_1>"/"        { BEGIN(INITIAL); }
+<COMMENT_STATE_1>"*"        { }
+<COMMENT_STATE_1>[^*/]      { BEGIN(COMMENT_STATE_0); }
 
 "int"           { return INT; }
 "return"        { return RETURN; }
