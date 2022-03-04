@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstdio>
 #include <iostream>
+#include <fstream>
 #include <memory>
 #include <string>
 
@@ -34,6 +35,9 @@ int main(int argc, const char *argv[]) {
     assert(!ret);
 
     // 输出解析得到的 AST, 其实就是个字符串
-    ast->Dump();
+    ofstream outfile;
+    outfile.open(output, fstream::out | fstream::trunc);
+    ast->Dump(outfile);
+    outfile.close();
     return 0;
 }

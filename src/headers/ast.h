@@ -31,15 +31,19 @@ public:
         out << "fun";
         out << " ";
         out << "@" << ident;
+
+        out << "(";
+        // params?
+        out << ")";
         out << ": ";
         func_type->Dump(out);
         out << " {" << std::endl;
+
         std::string entry_name("entry");  // TODO: decide entry_name
         out << "%" << entry_name << ":" << std::endl;
         block->Dump(out);
         out << std::endl;
         out << "}";
-        out << std::endl;
     }
 };
 
@@ -62,7 +66,7 @@ public:
     std::unique_ptr<BaseAST> stmt;
     void Dump(std::ostream& out = std::cout) const override {
         out << "  ";
-        stmt->Dump();
+        stmt->Dump(out);
     }
 };
 
