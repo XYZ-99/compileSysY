@@ -16,9 +16,8 @@ public:
     // 用智能指针管理对象
     std::unique_ptr<BaseAST> func_def;
     void Dump() const override {
-        std::cout << "CompUnitAST { ";
         func_def->Dump();
-        std::cout << " }" << std::endl;
+        std::cout << std::endl;
     }
 };
 
@@ -29,11 +28,18 @@ public:
     std::string ident;
     std::unique_ptr<BaseAST> block;
     void Dump() const override {
-        std::cout << "FuncDefAST { ";
+        std::cout << "fun";
+        std::cout << " ";
+        std::cout << "@" << ident;
+        std::cout << ": ";
         func_type->Dump();
-        std::cout << ", " << ident << ", ";
+        std::cout << " {" << std::endl;
+        std::string entry_name("entry");  // TODO: decide entry_name
+        std::cout << "%" << entry_name << ":" << std::endl;
         block->Dump();
-        std::cout << " }";
+        std::cout << std::endl;
+        std::cout << "}";
+        std::cout << std::endl;
     }
 };
 
@@ -41,9 +47,13 @@ class FuncTypeAST : public BaseAST {
 public:
     std::string type;
     void Dump() const override {
-        std::cout << "FuncTypeAST { ";
-        std::cout << type;
-        std::cout << " }";
+        if (type == "int") {
+            std::cout << "i32";
+        } else {
+            std::string error_info = std::string("Unrecognized function type: ") +
+                                     std::string(type);
+            throw error_info;
+        }
     }
 };
 
@@ -51,9 +61,8 @@ class BlockAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> stmt;
     void Dump() const override {
-        std::cout << "Block { ";
+        std::cout << "  ";
         stmt->Dump();
-        std::cout << " }";
     }
 };
 
@@ -61,9 +70,9 @@ class StmtAST : public BaseAST {
 public:
     int number;
     void Dump() const override {
-        std::cout << "Stmt { ";
+        std::cout << "ret";
+        std::cout << " ";
         std::cout << number;
-        std::cout << " }";
     }
 };
 
