@@ -3,7 +3,8 @@
 #include <iostream>
 #include <fstream>
 #include <memory>
-#include <string>
+#include <cstring>
+#include <sstream>
 
 #include "headers/ast.h"
 
@@ -34,10 +35,16 @@ int main(int argc, const char *argv[]) {
     auto ret = yyparse(ast);
     assert(!ret);
 
-    // 输出解析得到的 AST, 其实就是个字符串
-    ofstream outfile;
-    outfile.open(output, fstream::out | fstream::trunc);
-    ast->Dump(outfile);
-    outfile.close();
+    if (strcmp(mode, "-koopa") == 0) {
+        ofstream outfile;
+        outfile.open(output, fstream::out | fstream::trunc);
+        ast->Dump(outfile);
+        outfile.close();
+    } else if (strcmp(mode, "-riscv") == 0) {
+        ostringstream out_string_stream;
+        ast->Dump(out_string_stream);
+        string koopa_str = out_string_stream.str();
+        cout << koopa_str << endl;
+    }
     return 0;
 }
