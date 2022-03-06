@@ -54,8 +54,12 @@ int main(int argc, const char *argv[]) {
         koopa_raw_program_t raw = koopa_build_raw_program(builder, program);
         koopa_delete_program(program);
 
-        Visit(raw);
+        ofstream outfile;
+        outfile.open(output, fstream::out | fstream::trunc);
 
+        Visit(raw, outfile);
+
+        outfile.close();
         koopa_delete_raw_program_builder(builder);
     }
     return 0;
