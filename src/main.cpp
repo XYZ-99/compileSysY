@@ -6,7 +6,9 @@
 #include <cstring>
 #include <sstream>
 
+#include "koopa.h"
 #include "headers/ast.h"
+#include "headers/visit_raw_program.h"
 
 using namespace std;
 
@@ -44,7 +46,17 @@ int main(int argc, const char *argv[]) {
         ostringstream out_string_stream;
         ast->Dump(out_string_stream);
         string koopa_str = out_string_stream.str();
-        cout << koopa_str << endl;
+
+        koopa_program_t program;
+        koopa_error_code_t ret = koopa_parse_from_string(koopa_str.c_str(), &program);
+        assert(ret == KOOPA_EC_SUCCESS);
+        koopa_raw_program_builder_t builder = koopa_new_raw_program_builder();
+        koopa_raw_program_t raw = koopa_build_raw_program(builder, program);
+        koopa_delete_program(program);
+
+        Visit(raw);
+
+        koopa_delete_raw_program_builder(builder);
     }
     return 0;
 }
