@@ -43,7 +43,7 @@ void Visit(const koopa_raw_slice_t &slice, std::ostream& out) {
                 break;
             default:
                 // 我们暂时不会遇到其他内容, 于是不对其做任何处理
-                throw "Bad koopa_raw_slice_t type!";
+                throw std::invalid_argument("Bad koopa_raw_slice_t type!");
         }
     }
 }
@@ -66,7 +66,7 @@ void Visit(const koopa_raw_value_t &value, std::ostream& out) {
             Visit(kind.data.integer, out); // koopa_raw_integer_t
             break;
         default:
-            throw "Bad instruction type!";
+            throw std::invalid_argument("Bad instruction type!");
     }
 }
 

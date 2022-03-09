@@ -37,7 +37,9 @@ int main(int argc, const char *argv[]) {
     auto ret = yyparse(ast);
     assert(!ret);
 
-    if (strcmp(mode, "-koopa") == 0) {
+    if (strcmp(mode, "-debug") == 0) {
+        ast->Dump();
+    } else if (strcmp(mode, "-koopa") == 0) {
         ofstream outfile;
         outfile.open(output, fstream::out | fstream::trunc);
         ast->Dump(outfile);
