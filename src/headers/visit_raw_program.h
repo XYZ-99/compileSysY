@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <cstring>
+#include "register.h"
 #include "koopa.h"
 
 
@@ -13,6 +14,7 @@ void Visit(const koopa_raw_basic_block_t &bb, std::ostream& out = std::cout);
 void Visit(const koopa_raw_value_t &value, std::ostream& out = std::cout);
 void Visit(const koopa_raw_return_t &ret, std::ostream& out = std::cout);
 void Visit(const koopa_raw_integer_t &integer, std::ostream& out = std::cout);
+void Visit(const koopa_raw_binary_t &binary, std::ostream& out);
 
 
 void Visit(const koopa_raw_program_t &program, std::ostream& out) {
@@ -65,6 +67,9 @@ void Visit(const koopa_raw_value_t &value, std::ostream& out) {
         case KOOPA_RVT_INTEGER:
             Visit(kind.data.integer, out); // koopa_raw_integer_t
             break;
+        case KOOPA_RVT_BINARY:
+            Visit(kind.data.binary, out);  // koopa_raw_binary_t
+            break;
         default:
             throw std::invalid_argument("Bad instruction type!");
     }
@@ -79,6 +84,19 @@ void Visit(const koopa_raw_return_t &ret, std::ostream& out) {
 
 void Visit(const koopa_raw_integer_t &integer, std::ostream& out) {
     out << integer.value;
+}
+
+void Visit(const koopa_raw_binary_t &binary, std::ostream& out) {
+    switch (binary.op) {
+        case KOOPA_RBO_EQ:
+            // lhs, rhs TODO: your register allocation algorithm
+            std::cout << binary.lhs->name;
+            break;
+        default:
+            std::cout << "------ Error information -------" << std::endl;
+            std::cout << "Invalid binary operation:" << binary.op << std::endl;
+            throw std::invalid_argument("Invalid binary operation!");
+    }
 }
 
 #endif //COMPILER_VISIT_RAW_PROGRAM_H
