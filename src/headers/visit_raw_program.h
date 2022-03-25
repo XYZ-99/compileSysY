@@ -28,7 +28,6 @@ void Visit(const koopa_raw_program_t &program, RegisterAllocator &reg_alloc, std
     Visit(program.values, reg_alloc, out);
     out << "  " << ".text" << std::endl;
     Visit(program.funcs, reg_alloc, out);
-    out << std::endl;
 }
 
 void Visit(const koopa_raw_slice_t &slice, RegisterAllocator &reg_alloc, std::ostream& out) {
@@ -101,7 +100,7 @@ void Visit(const koopa_raw_return_t &ret, RegisterAllocator &reg_alloc, std::ost
     std::string ret_val = getValueName(ret.value);
 //    Visit(ret.value, reg_alloc, out);
     out << "  " << std::left << std::setw(INSTR_WIDTH) << "li" << " a0, " << ret_val << std::endl;
-    out << "  ret";  // TODO: std::endl?
+    out << "  ret" << std::endl;
 }
 
 void Visit(const koopa_raw_integer_t &integer, RegisterAllocator &reg_alloc, std::ostream& out) {
