@@ -9,6 +9,7 @@
 #include "koopa.h"
 #include "headers/ast.h"
 #include "headers/visit_raw_program.h"
+#include "headers/register.h"
 
 using namespace std;
 
@@ -55,11 +56,11 @@ int main(int argc, const char *argv[]) {
         koopa_raw_program_builder_t builder = koopa_new_raw_program_builder();
         koopa_raw_program_t raw = koopa_build_raw_program(builder, program);
         koopa_delete_program(program);
-
         ofstream outfile;
         outfile.open(output, fstream::out | fstream::trunc);
+        RegisterAllocator reg_alloc;
 
-        Visit(raw, outfile);
+        Visit(raw, reg_alloc, outfile);
 
         outfile.close();
         koopa_delete_raw_program_builder(builder);
