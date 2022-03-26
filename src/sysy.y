@@ -40,7 +40,8 @@ using namespace std;
 %left '*' '/'
 
 // 非终结符的类型定义
-%type <ast_val> FuncDef FuncType Block Stmt Exp UnaryExp PrimaryExp
+%type <ast_val> FuncDef FuncType Block Stmt Exp UnaryExp PrimaryExp MulExp AddExp
+%type <str_val> AddOp MulOp
 %type <int_val> Number UnaryOp
 
 %%
@@ -90,9 +91,9 @@ Stmt
   ;
 
 Exp
-  : UnaryExp {
+  : AddExp {
     auto ast = new ExpAST();
-    ast->unary_exp = unique_ptr<BaseAST>($1);
+    ast->add_exp = unique_ptr<BaseAST>($1);
     $$ = ast;
   }
   ;
@@ -139,6 +140,59 @@ UnaryOp
   }
   | '!' {
     $$ = UNARY_NEG;
+  }
+  ;
+
+// These are 2 hidden grammars that help us parse binary expressions but never occur in SysY syntactical rules.
+AddOp
+  : '+' {
+    $$ = new string("+");
+  }
+  | '-' {
+    $$ = new string("-");
+  }
+  ;
+
+MulOp
+  : '*' {
+    $$ = new string("*");
+  }
+  | '/' {
+    $$ = new string("/");
+  }
+  | '%' {
+    $$ = new string("%");
+  }
+  ;
+
+
+MulExp
+  : UnaryExp {
+    auto ast = new MulExpAST();
+    ast->unary_exp = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  | MulExp MulOp UnaryExp {
+    auto ast = new MulExpAST();
+    ast->mul_exp = unique_ptr<BaseAST>($1);
+    ast->unary_exp = unique_ptr<BaseAST>($3);
+    ast->op = *unique_ptr<string>($2);
+    $$ = ast;
+  }
+  ;
+
+AddExp
+  : MulExp {
+    auto ast = new AddExpAST();
+    ast->mul_exp = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  | AddExp AddOp MulExp {
+    auto ast = new AddExpAST();
+    ast->add_exp = unique_ptr<BaseAST>($1);
+    ast->mul_exp = unique_ptr<BaseAST>($3);
+    ast->op = *unique_ptr<string>($2);
+    $$ = ast;
   }
   ;
 

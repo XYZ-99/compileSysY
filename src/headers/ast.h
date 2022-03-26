@@ -23,7 +23,7 @@ public:
         out << std::endl;
     }
     std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
-        return std::string(NULL);
+        return std::string("");
     }
 };
 
@@ -52,7 +52,7 @@ public:
         out << "}";
     }
     std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
-        return std::string(NULL);
+        return std::string("");
     }
 };
 
@@ -69,7 +69,7 @@ public:
         }
     }
     std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
-        return std::string(NULL);
+        return std::string("");
     }
 };
 
@@ -81,7 +81,7 @@ public:
         stmt->Dump(out);
     }
     std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
-        return std::string(NULL);
+        return std::string("");
     }
 };
 
@@ -96,16 +96,16 @@ public:
         out << temp_var;
     }
     std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
-        return std::string(NULL);
+        return std::string("");
     }
 };
 
 class ExpAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> unary_exp;
+    std::unique_ptr<BaseAST> add_exp;
     void Dump(std::ostream& out = std::cout) const override { }
     std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
-        std::string temp_var = unary_exp->DumpExp(temp_var_start, out);
+        std::string temp_var = add_exp->DumpExp(temp_var_start, out);
         return temp_var;
     }
 };
@@ -175,6 +175,80 @@ public:
             throw std::invalid_argument("exp and number are both nullptr!");
         }
         return ret_str;
+    }
+};
+
+class MulExpAST : public BaseAST {
+public:
+    std::unique_ptr<BaseAST> unary_exp;
+    std::unique_ptr<BaseAST> mul_exp;
+    std::string op;
+    virtual void Dump(std::ostream& out = std::cout) const override { }
+    virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
+        if (!op.empty()) {
+            // MulExp ::= MulExp ("*" | "/" | "%") UnaryExp;
+            std::string lhs_name = mul_exp->DumpExp(temp_var_start, out);
+            std::string rhs_name = unary_exp->DumpExp(temp_var_start, out);
+
+            std::string temp_var = "%" + std::to_string(temp_var_start);
+
+            out << "  " << temp_var << " = ";
+            if (op == "*") {
+                out << "mul";
+            } else if (op == "/") {
+                out << "div";
+            } else if (op == "%") {
+                out << "mod";
+            } else {
+                std::cout << "------ Error Information ------" << std::endl;
+                std::cout << "In MulExpAST: invalid op: " << op << std::endl;
+                throw std::invalid_argument("invalid argument");
+            }
+            out << " " << lhs_name << ", " << rhs_name << std::endl;
+
+            temp_var_start++;
+            return temp_var;
+        } else {
+            // MulExp ::= UnaryExp;
+            std::string var_name = unary_exp->DumpExp(temp_var_start, out);
+            return var_name;
+        }
+    }
+};
+
+class AddExpAST : public BaseAST {
+public:
+    std::unique_ptr<BaseAST> add_exp;
+    std::unique_ptr<BaseAST> mul_exp;
+    std::string op;
+    virtual void Dump(std::ostream& out = std::cout) const override { }
+    virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
+        if (!op.empty()) {
+            // AddExp ::= AddExp ("+" | "-") MulExp;
+            std::string lhs_name = add_exp->DumpExp(temp_var_start, out);
+            std::string rhs_name = mul_exp->DumpExp(temp_var_start, out);
+
+            std::string temp_var = "%" + std::to_string(temp_var_start);
+
+            out << "  " << temp_var << " = ";
+            if (op == "+") {
+                out << "add";
+            } else if (op == "-") {
+                out << "sub";
+            } else {
+                std::cout << "------ Error Information ------" << std::endl;
+                std::cout << "In AddExpAST: invalid op: " << op << std::endl;
+                throw std::invalid_argument("invalid argument");
+            }
+            out << " " << lhs_name << ", " << rhs_name << std::endl;
+
+            temp_var_start++;
+            return temp_var;
+        } else {
+            // AddExp ::= MulExp;
+            std::string var_name = mul_exp->DumpExp(temp_var_start, out);
+            return var_name;
+        }
     }
 };
 
