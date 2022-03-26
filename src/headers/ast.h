@@ -102,10 +102,10 @@ public:
 
 class ExpAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> add_exp;
+    std::unique_ptr<BaseAST> l_or_exp;
     void Dump(std::ostream& out = std::cout) const override { }
     std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
-        std::string temp_var = add_exp->DumpExp(temp_var_start, out);
+        std::string temp_var = l_or_exp->DumpExp(temp_var_start, out);
         return temp_var;
     }
 };
@@ -183,8 +183,8 @@ public:
     std::unique_ptr<BaseAST> unary_exp;
     std::unique_ptr<BaseAST> mul_exp;
     std::string op;
-    virtual void Dump(std::ostream& out = std::cout) const override { }
-    virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
+    void Dump(std::ostream& out = std::cout) const override { }
+    std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
         if (!op.empty()) {
             // MulExp ::= MulExp ("*" | "/" | "%") UnaryExp;
             std::string lhs_name = mul_exp->DumpExp(temp_var_start, out);
@@ -251,5 +251,138 @@ public:
         }
     }
 };
+
+class RelExpAST : public BaseAST {
+public:
+    std::unique_ptr<BaseAST> add_exp;
+    std::unique_ptr<BaseAST> rel_exp;
+    std::string rel_op;
+    virtual void Dump(std::ostream& out = std::cout) const override { }
+    virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
+        if (!rel_op.empty()) {
+            // RelExp ::= RelExp ("<" | ">" | "<=" | ">=") AddExp;
+            std::string lhs_name = rel_exp->DumpExp(temp_var_start, out);
+            std::string rhs_name = add_exp->DumpExp(temp_var_start, out);
+
+            std::string temp_var = "%" + std::to_string(temp_var_start);
+
+            out << "  " << temp_var << " = ";
+            if (rel_op == ">") {
+                out << "gt";
+            } else if (rel_op == "<") {
+                out << "lt";
+            } else if (rel_op == ">=") {
+                out << "ge";
+            } else if (rel_op == "<=") {
+                out << "le";
+            } else {
+                std::cout << "------ Error Information ------" << std::endl;
+                std::cout << "In RelExpAST: invalid rel_op: " << rel_op << std::endl;
+                throw std::invalid_argument("invalid argument");
+            }
+            out << " " << lhs_name << ", " << rhs_name << std::endl;
+
+            temp_var_start++;
+            return temp_var;
+        } else {
+            // RelExp ::= AddExp;
+            std::string var_name = add_exp->DumpExp(temp_var_start, out);
+            return var_name;
+        }
+    }
+};
+
+class EqExpAST : public BaseAST {
+public:
+    std::unique_ptr<BaseAST> rel_exp;
+    std::unique_ptr<BaseAST> eq_exp;
+    std::string eq_op;
+    virtual void Dump(std::ostream& out = std::cout) const override { }
+    virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
+        if (eq_exp != nullptr) {
+            // EqExp ::= EqExp ("==" | "!=") RelExp;
+            std::string lhs_name = eq_exp->DumpExp(temp_var_start, out);
+            std::string rhs_name = rel_exp->DumpExp(temp_var_start, out);
+
+            std::string temp_var = "%" + std::to_string(temp_var_start);
+
+            out << "  " << temp_var << " = ";
+            if (eq_op == "==") {
+                out << "eq";
+            } else if (eq_op == "!=") {
+                out << "ne";
+            } else {
+                std::cout << "------ Error Information ------" << std::endl;
+                std::cout << "In EqExpAST: invalid eq_op: " << eq_op << std::endl;
+                throw std::invalid_argument("invalid argument");
+            }
+            out << " " << lhs_name << ", " << rhs_name << std::endl;
+
+            temp_var_start++;
+            return temp_var;
+        } else {
+            // EqExp ::= RelExp;
+            std::string var_name = rel_exp->DumpExp(temp_var_start, out);
+            return var_name;
+        }
+    }
+};
+
+class LAndExpAST : public BaseAST {
+public:
+    std::unique_ptr<BaseAST> eq_exp;
+    std::unique_ptr<BaseAST> l_and_exp;
+    // we do not need an and_op since there is only one choice.
+    virtual void Dump(std::ostream& out = std::cout) const override { }
+    virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
+        if (l_and_exp != nullptr) {
+            // LAndExp ::= LAndExp "&&" EqExp;
+            std::string lhs_name = l_and_exp->DumpExp(temp_var_start, out);
+            std::string rhs_name = eq_exp->DumpExp(temp_var_start, out);
+
+            std::string temp_var = "%" + std::to_string(temp_var_start);
+
+            out << "  " << temp_var << " = " << "and";  // TODO: not and
+            out << " " << lhs_name << ", " << rhs_name << std::endl;
+
+            temp_var_start++;
+            return temp_var;
+        } else {
+            // LAndExp ::= EqExp
+            std::string var_name = eq_exp->DumpExp(temp_var_start, out);
+            return var_name;
+        }
+    }
+};
+
+class LOrExpAST : public BaseAST {
+public:
+    std::unique_ptr<BaseAST> l_and_exp;
+    std::unique_ptr<BaseAST> l_or_exp;
+    // we do not need an or_op since there is only one choice.
+    virtual void Dump(std::ostream& out = std::cout) const override { }
+    virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
+        if (l_or_exp != nullptr) {
+            // LOrExp ::= LOrExp "||" LAndExp;
+            std::string lhs_name = l_or_exp->DumpExp(temp_var_start, out);
+            std::string rhs_name = l_and_exp->DumpExp(temp_var_start, out);
+
+            std::string temp_var = "%" + std::to_string(temp_var_start);
+
+            out << "  " << temp_var << " = " << "or";  // TODO: not or
+            out << " " << lhs_name << ", " << rhs_name << std::endl;
+
+            temp_var_start++;
+            return temp_var;
+        } else {
+            // LOrExp ::= LAndExp'
+            std::string var_name = l_and_exp->DumpExp(temp_var_start, out);
+            return var_name;
+        }
+    }
+};
+
+// TODO: Default args on overridden methods are prohibited
+// TODO: Eliminate virtual
 
 #endif //COMPILER_AST_H

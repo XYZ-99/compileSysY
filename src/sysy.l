@@ -31,6 +31,11 @@ Hexadecimal   0[xX][0-9a-fA-F]+
 /* Exclusive start condition */
 %x COMMENT_STATE_0 COMMENT_STATE_1
 
+RelationOp    [<>]=?
+EqualOp       ==|!=
+LexAndOp      &&
+LexOrOp       "||"
+
 %%
 
 {WhiteSpace}    { /* 忽略, 不做任何操作 */ }
@@ -51,6 +56,11 @@ Hexadecimal   0[xX][0-9a-fA-F]+
 {Decimal}       { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 {Octal}         { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 {Hexadecimal}   { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
+
+{RelationOp}    { yylval.str_val = new string(yytext); return REL_OP; }
+{EqualOp}       { yylval.str_val = new string(yytext); return EQUAL_OP; }
+{LexAndOp}      { yylval.str_val = new string(yytext); return AND_OP; }  // TODO: May not need yylval
+{LexOrOp}       { yylval.str_val = new string(yytext); return OR_OP; }   // TODO: May not need yylval
 
 .               { return yytext[0]; }
 
