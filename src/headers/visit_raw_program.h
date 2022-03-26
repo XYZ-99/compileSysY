@@ -126,15 +126,13 @@ std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc
     std::string arith_op;
     switch (binary.op) {
         case KOOPA_RBO_EQ: {
-            std::string reg_name = reg_alloc.allocate();
-            if (!reg_name.empty()) {
-                std::string lhs_name = getValueName(binary.lhs, out);
-                std::string rhs_name = getValueName(binary.rhs, out);
-                /* might be redundant. After all, one li will be used.
-                if (lhs_name == "0") {
-                    lhs_name = "x0";
-                }
-                 */
+            std::string lhs_name = getValueName(binary.lhs, out);
+            std::string rhs_name = getValueName(binary.rhs, out);
+            /* might be redundant. After all, one li will be used.
+            if (lhs_name == "0") {
+                lhs_name = "x0";
+            }
+             */
 //                if (rhs_name == "0") {
 //                    rhs_name = "x0";
 //                } else {
@@ -142,15 +140,12 @@ std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc
 //                    out << "  " << "li " << rhs_reg << " " << rhs_name << std::endl;
 //                    rhs_name = rhs_reg;
 //                }
-                rhs_name = LoadIntToReg(rhs_name, reg_alloc, out);
-                out << "  " << std::left << std::setw(INSTR_WIDTH) << "li"   << " " << reg_name << ", " << lhs_name << std::endl;
-                out << "  " << std::left << std::setw(INSTR_WIDTH) << "xor"  << " " << reg_name << ", " << reg_name << ", " << rhs_name << std::endl;
-                out << "  " << std::left << std::setw(INSTR_WIDTH) << "seqz" << " " << reg_name << ", " << reg_name << std::endl;
-
-                return reg_name;
-            } else {
-                throw std::invalid_argument("Reg fully allocated in binary_t!");
-            }
+            lhs_name = LoadIntToReg(lhs_name, reg_alloc, out);
+            rhs_name = LoadIntToReg(rhs_name, reg_alloc, out);
+            std::string reg_name = lhs_name;
+            out << "  " << std::left << std::setw(INSTR_WIDTH) << "xor"  << " " << reg_name << ", " << reg_name << ", " << rhs_name << std::endl;
+            out << "  " << std::left << std::setw(INSTR_WIDTH) << "seqz" << " " << reg_name << ", " << reg_name << std::endl;
+            return reg_name;
             break;
         }
         case KOOPA_RBO_SUB: {
