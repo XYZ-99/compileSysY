@@ -123,10 +123,11 @@ std::string LoadIntToReg(std::string intString, RegisterAllocator &reg_alloc, st
 }
 
 std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc, std::ostream& out) {
+    std::string arith_op;
     switch (binary.op) {
         case KOOPA_RBO_EQ: {
             std::string reg_name = reg_alloc.allocate();
-            if (reg_name !=  "") {
+            if (!reg_name.empty()) {
                 std::string lhs_name = getValueName(binary.lhs, out);
                 std::string rhs_name = getValueName(binary.rhs, out);
                 /* might be redundant. After all, one li will be used.
@@ -153,14 +154,23 @@ std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc
             break;
         }
         case KOOPA_RBO_SUB: {
-            std::string lhs_name = getValueName(binary.lhs, out);
-            std::string rhs_name = getValueName(binary.rhs, out);
-            lhs_name = LoadIntToReg(lhs_name, reg_alloc, out);
-            rhs_name = LoadIntToReg(rhs_name, reg_alloc, out);
-
-            std::string reg_name = reg_alloc.allocate();
-            out << "  " << std::left << std::setw(INSTR_WIDTH) << "sub" << " " << reg_name << ", " << lhs_name << ", " << rhs_name << std::endl;
-            return reg_name;
+            arith_op = "sub";
+            break;
+        }
+        case KOOPA_RBO_ADD: {
+            arith_op = "add";
+            break;
+        }
+        case KOOPA_RBO_MUL: {
+            arith_op = "mul";
+            break;
+        }
+        case KOOPA_RBO_DIV: {
+            arith_op = "div";
+            break;
+        }
+        case KOOPA_RBO_MOD: {
+            arith_op = "mod";
             break;
         }
         default:
@@ -168,6 +178,20 @@ std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc
             std::cout << "Invalid binary operation:" << binary.op << std::endl;
             throw std::invalid_argument("Invalid binary operation!");
     }
+    std::string lhs_name = getValueName(binary.lhs, out);
+    std::string rhs_name = getValueName(binary.rhs, out);
+    lhs_name = LoadIntToReg(lhs_name, reg_alloc, out);
+    rhs_name = LoadIntToReg(rhs_name, reg_alloc, out);
+
+    // TODO: may squeeze the use of registers
+    std::string reg_name = reg_alloc.allocate();
+    if (reg_name.empty()) {
+        std::cout << "------ Error Information ------" << std::endl;
+        std::cout << "reg_name is empty in visiting binary information!" << std::endl;
+        throw std::invalid_argument("Registers are running out!");
+    }
+    out << "  " << std::left << std::setw(INSTR_WIDTH) << arith_op << " " << reg_name << ", " << lhs_name << ", " << rhs_name << std::endl;
+    return reg_name;
 }
 
 #endif //COMPILER_VISIT_RAW_PROGRAM_H
