@@ -340,12 +340,16 @@ public:
             std::string lhs_name = l_and_exp->DumpExp(temp_var_start, out);
             std::string rhs_name = eq_exp->DumpExp(temp_var_start, out);
 
-            std::string temp_var = "%" + std::to_string(temp_var_start);
+            // snez t0, t0
+            // snez t1, t1
+            // and  t0, t0, t1
+            std::string temp_var_lhs = "%" + std::to_string(temp_var_start++);
+            out << "  " << temp_var_lhs << " = " << "ne " << lhs_name << ", 0" << std::endl;
+            std::string temp_var_rhs = "%" + std::to_string(temp_var_start++);
+            out << "  " << temp_var_rhs << " = " << "ne " << rhs_name << ", 0" << std::endl;
+            std::string temp_var = "%" + std::to_string(temp_var_start++);
+            out << "  " << temp_var << " = " << "and " << temp_var_lhs << ", " << temp_var_rhs << std::endl;
 
-            out << "  " << temp_var << " = " << "and";  // TODO: not and
-            out << " " << lhs_name << ", " << rhs_name << std::endl;
-
-            temp_var_start++;
             return temp_var;
         } else {
             // LAndExp ::= EqExp
@@ -367,12 +371,14 @@ public:
             std::string lhs_name = l_or_exp->DumpExp(temp_var_start, out);
             std::string rhs_name = l_and_exp->DumpExp(temp_var_start, out);
 
-            std::string temp_var = "%" + std::to_string(temp_var_start);
+            // or t0, t0, t1
+            // snez t0, t0
+            std::string temp_var_middle = "%" + std::to_string(temp_var_start++);
+            out << "  " << temp_var_middle << " = " << "or " << lhs_name << ", " << rhs_name << std::endl;
 
-            out << "  " << temp_var << " = " << "or";  // TODO: not or
-            out << " " << lhs_name << ", " << rhs_name << std::endl;
+            std::string temp_var = "%" + std::to_string(temp_var_start++);
+            out << "  " << temp_var << " = " << "ne " << temp_var_middle << ", 0" << std::endl;
 
-            temp_var_start++;
             return temp_var;
         } else {
             // LOrExp ::= LAndExp'

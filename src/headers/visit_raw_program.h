@@ -143,6 +143,7 @@ std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc
             lhs_name = LoadIntToReg(lhs_name, reg_alloc, out);
             rhs_name = LoadIntToReg(rhs_name, reg_alloc, out);
             std::string reg_name = lhs_name;
+            // TODO: support snez?
             out << "  " << std::left << std::setw(INSTR_WIDTH) << "xor"  << " " << reg_name << ", " << reg_name << ", " << rhs_name << std::endl;
             out << "  " << std::left << std::setw(INSTR_WIDTH) << "seqz" << " " << reg_name << ", " << reg_name << std::endl;
             return reg_name;
