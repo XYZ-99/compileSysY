@@ -221,8 +221,8 @@ public:
     std::unique_ptr<BaseAST> add_exp;
     std::unique_ptr<BaseAST> mul_exp;
     std::string op;
-    virtual void Dump(std::ostream& out = std::cout) const override { }
-    virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
+    void Dump(std::ostream& out) const override { }
+    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
         if (!op.empty()) {
             // AddExp ::= AddExp ("+" | "-") MulExp;
             std::string lhs_name = add_exp->DumpExp(temp_var_start, out);
@@ -257,8 +257,8 @@ public:
     std::unique_ptr<BaseAST> add_exp;
     std::unique_ptr<BaseAST> rel_exp;
     std::string rel_op;
-    virtual void Dump(std::ostream& out = std::cout) const override { }
-    virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
+    void Dump(std::ostream& out) const override { }
+    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
         if (!rel_op.empty()) {
             // RelExp ::= RelExp ("<" | ">" | "<=" | ">=") AddExp;
             std::string lhs_name = rel_exp->DumpExp(temp_var_start, out);
@@ -297,8 +297,8 @@ public:
     std::unique_ptr<BaseAST> rel_exp;
     std::unique_ptr<BaseAST> eq_exp;
     std::string eq_op;
-    virtual void Dump(std::ostream& out = std::cout) const override { }
-    virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
+    void Dump(std::ostream& out) const override { }
+    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
         if (eq_exp != nullptr) {
             // EqExp ::= EqExp ("==" | "!=") RelExp;
             std::string lhs_name = eq_exp->DumpExp(temp_var_start, out);
@@ -333,8 +333,8 @@ public:
     std::unique_ptr<BaseAST> eq_exp;
     std::unique_ptr<BaseAST> l_and_exp;
     // we do not need an and_op since there is only one choice.
-    virtual void Dump(std::ostream& out = std::cout) const override { }
-    virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
+    void Dump(std::ostream& out) const override { }
+    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
         if (l_and_exp != nullptr) {
             // LAndExp ::= LAndExp "&&" EqExp;
             std::string lhs_name = l_and_exp->DumpExp(temp_var_start, out);
@@ -364,8 +364,8 @@ public:
     std::unique_ptr<BaseAST> l_and_exp;
     std::unique_ptr<BaseAST> l_or_exp;
     // we do not need an or_op since there is only one choice.
-    virtual void Dump(std::ostream& out = std::cout) const override { }
-    virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const override {
+    void Dump(std::ostream& out) const override { }
+    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
         if (l_or_exp != nullptr) {
             // LOrExp ::= LOrExp "||" LAndExp;
             std::string lhs_name = l_or_exp->DumpExp(temp_var_start, out);
@@ -388,7 +388,5 @@ public:
     }
 };
 
-// TODO: Default args on overridden methods are prohibited
-// TODO: Eliminate virtual
 
 #endif //COMPILER_AST_H
