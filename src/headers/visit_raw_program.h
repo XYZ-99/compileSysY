@@ -155,15 +155,24 @@ std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc
 
             if (lhs_name == "x0" || rhs_name == "x0") {
                 // Using instruction: seqz
-                // TODO: correctness unchecked
-                std::string the_other;
-                if (lhs_name == "x0") {
-                    the_other = rhs_name;
+                std::string ret_reg;
+                if (lhs_name == "x0" && rhs_name != "x0") {
+                    ret_reg = rhs_name;
+                } else if (rhs_name == "x0" && lhs_name != "x0"){
+                    ret_reg = lhs_name;
                 } else {
-                    the_other = lhs_name;
+                    // rhs_name == lhs_name == "x0"
+                    ret_reg = reg_alloc.allocate();
+                    if (ret_reg.empty()) {
+                        std::cout << "------ Error Information ------" << std::endl;
+                        std::cout << "reg_name is empty in visiting binary information!" << std::endl;
+                        throw std::invalid_argument("Registers are running out!");
+                    }
+                    out << "  " << std::left << std::setw(INSTR_WIDTH) << "li" << " " << ret_reg << ", " << "1" << std::endl;
+                    return ret_reg;
                 }
-                out << "  " << std::left << std::setw(INSTR_WIDTH) << "seqz" << " " << the_other << ", " << the_other << std::endl;
-                return the_other;
+                out << "  " << std::left << std::setw(INSTR_WIDTH) << "seqz" << " " << ret_reg << ", " << ret_reg << std::endl;
+                return ret_reg;
             }
 
             // If not directly comparing to 0
@@ -193,15 +202,24 @@ std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc
 
             if (lhs_name == "x0" || rhs_name == "x0") {
                 // Using instruction: snez
-                // TODO: correctness unchecked
-                std::string the_other;
-                if (lhs_name == "x0") {
-                    the_other = rhs_name;
+                std::string ret_reg;
+                if (lhs_name == "x0" && rhs_name != "x0") {
+                    ret_reg = rhs_name;
+                } else if (rhs_name == "x0" && lhs_name != "x0"){
+                    ret_reg = lhs_name;
                 } else {
-                    the_other = lhs_name;
+                    // rhs_name == lhs_name == "x0"
+                    ret_reg = reg_alloc.allocate();
+                    if (ret_reg.empty()) {
+                        std::cout << "------ Error Information ------" << std::endl;
+                        std::cout << "reg_name is empty in visiting binary information!" << std::endl;
+                        throw std::invalid_argument("Registers are running out!");
+                    }
+                    out << "  " << std::left << std::setw(INSTR_WIDTH) << "li" << " " << ret_reg << ", " << "0" << std::endl;
                 }
-                out << "  " << std::left << std::setw(INSTR_WIDTH) << "snez" << " " << the_other << ", " << the_other << std::endl;
-                return the_other;
+
+                out << "  " << std::left << std::setw(INSTR_WIDTH) << "snez" << " " << ret_reg << ", " << ret_reg << std::endl;
+                return ret_reg;
             }
 
             // If not directly comparing to 0
@@ -259,7 +277,7 @@ std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc
             break;
         }
         case KOOPA_RBO_MOD: {
-            arith_op = "mod";
+            arith_op = "rem";
             break;
         }
         default:
@@ -275,7 +293,16 @@ std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc
     std::string reg_name;
     if (compare_op) {
         // does not need to allocate a new reg
-        reg_name = lhs_name;
+        if (lhs_name != "x0") {
+            reg_name = lhs_name;
+        } else {
+            reg_name = reg_alloc.allocate();
+            if (reg_name.empty()) {
+                std::cout << "------ Error Information ------" << std::endl;
+                std::cout << "reg_name is empty in visiting binary information!" << std::endl;
+                throw std::invalid_argument("Registers are running out!");
+            }
+        }
         if (swap_compare_var) {
             // because riscv only implement slt
             std::string swap_temp = lhs_name;
