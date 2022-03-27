@@ -99,7 +99,14 @@ std::string getValueName(const koopa_raw_value_t &value, std::ostream& out) {
 void Visit(const koopa_raw_return_t &ret, RegisterAllocator &reg_alloc, std::ostream& out) {
     std::string ret_val = getValueName(ret.value);
 //    Visit(ret.value, reg_alloc, out);
-    out << "  " << std::left << std::setw(INSTR_WIDTH) << "li" << " a0, " << ret_val << std::endl;
+    std::string op_name;
+    if (ret_val[0] == 't' || ret_val[0] == 'a') {
+        op_name = "mv";
+    } else {
+        // WARNING: for now we assume this would be an integer!
+        op_name = "li";
+    }
+    out << "  " << std::left << std::setw(INSTR_WIDTH) << op_name << " a0, " << ret_val << std::endl;
     out << "  ret" << std::endl;
 }
 
@@ -124,6 +131,9 @@ std::string LoadIntToReg(std::string intString, RegisterAllocator &reg_alloc, st
 
 std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc, std::ostream& out) {
     std::string arith_op;
+    bool swap_compare_var = false;
+    bool compare_op = false;
+    bool compare_eq = false;
     switch (binary.op) {
         case KOOPA_RBO_EQ: {
             std::string lhs_name = getValueName(binary.lhs, out);
@@ -142,11 +152,94 @@ std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc
 //                }
             lhs_name = LoadIntToReg(lhs_name, reg_alloc, out);
             rhs_name = LoadIntToReg(rhs_name, reg_alloc, out);
+
+            if (lhs_name == "x0" || rhs_name == "x0") {
+                // Using instruction: seqz
+                // TODO: correctness unchecked
+                std::string the_other;
+                if (lhs_name == "x0") {
+                    the_other = rhs_name;
+                } else {
+                    the_other = lhs_name;
+                }
+                out << "  " << std::left << std::setw(INSTR_WIDTH) << "seqz" << " " << the_other << ", " << the_other << std::endl;
+                return the_other;
+            }
+
+            // If not directly comparing to 0
             std::string reg_name = lhs_name;
-            // TODO: support snez?
             out << "  " << std::left << std::setw(INSTR_WIDTH) << "xor"  << " " << reg_name << ", " << reg_name << ", " << rhs_name << std::endl;
             out << "  " << std::left << std::setw(INSTR_WIDTH) << "seqz" << " " << reg_name << ", " << reg_name << std::endl;
             return reg_name;
+            break;
+        }
+        case KOOPA_RBO_NOT_EQ: {
+            std::string lhs_name = getValueName(binary.lhs, out);
+            std::string rhs_name = getValueName(binary.rhs, out);
+            /* might be redundant. After all, one li will be used.
+            if (lhs_name == "0") {
+                lhs_name = "x0";
+            }
+             */
+//                if (rhs_name == "0") {
+//                    rhs_name = "x0";
+//                } else {
+//                    std::string rhs_reg = reg_alloc.allocate();
+//                    out << "  " << "li " << rhs_reg << " " << rhs_name << std::endl;
+//                    rhs_name = rhs_reg;
+//                }
+            lhs_name = LoadIntToReg(lhs_name, reg_alloc, out);
+            rhs_name = LoadIntToReg(rhs_name, reg_alloc, out);
+
+            if (lhs_name == "x0" || rhs_name == "x0") {
+                // Using instruction: snez
+                // TODO: correctness unchecked
+                std::string the_other;
+                if (lhs_name == "x0") {
+                    the_other = rhs_name;
+                } else {
+                    the_other = lhs_name;
+                }
+                out << "  " << std::left << std::setw(INSTR_WIDTH) << "snez" << " " << the_other << ", " << the_other << std::endl;
+                return the_other;
+            }
+
+            // If not directly comparing to 0
+            std::string reg_name = lhs_name;
+            out << "  " << std::left << std::setw(INSTR_WIDTH) << "xor"  << " " << reg_name << ", " << reg_name << ", " << rhs_name << std::endl;
+            out << "  " << std::left << std::setw(INSTR_WIDTH) << "snez" << " " << reg_name << ", " << reg_name << std::endl;
+            return reg_name;
+            break;
+        }
+        case KOOPA_RBO_LE: {
+            // a <= b <=> !(a > b)
+            // because riscv only implement slt
+            swap_compare_var = true;
+            // Fall through
+        }
+        case KOOPA_RBO_GE: {
+            // a >= b <=> !(a < b)
+            arith_op = "slt";
+            compare_op = true;
+            compare_eq = true;
+            break;
+        }
+        case KOOPA_RBO_GT: {
+            // because riscv only implement slt
+            swap_compare_var = true;
+            // Fall through
+        }
+        case KOOPA_RBO_LT: {
+            arith_op = "slt";
+            compare_op = true;
+            break;
+        }
+        case KOOPA_RBO_AND: {
+            arith_op = "and";
+            break;
+        }
+        case KOOPA_RBO_OR: {
+            arith_op = "or";
             break;
         }
         case KOOPA_RBO_SUB: {
@@ -179,14 +272,32 @@ std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc
     lhs_name = LoadIntToReg(lhs_name, reg_alloc, out);
     rhs_name = LoadIntToReg(rhs_name, reg_alloc, out);
 
-    // TODO: may squeeze the use of registers
-    std::string reg_name = reg_alloc.allocate();
-    if (reg_name.empty()) {
-        std::cout << "------ Error Information ------" << std::endl;
-        std::cout << "reg_name is empty in visiting binary information!" << std::endl;
-        throw std::invalid_argument("Registers are running out!");
+    std::string reg_name;
+    if (compare_op) {
+        // does not need to allocate a new reg
+        reg_name = lhs_name;
+        if (swap_compare_var) {
+            // because riscv only implement slt
+            std::string swap_temp = lhs_name;
+            lhs_name = rhs_name;
+            rhs_name = swap_temp;
+        }
+    } else {
+        // TODO: may squeeze the use of registers
+        // otherwise, allocate a new reg (for now)
+        reg_name = reg_alloc.allocate();
+        if (reg_name.empty()) {
+            std::cout << "------ Error Information ------" << std::endl;
+            std::cout << "reg_name is empty in visiting binary information!" << std::endl;
+            throw std::invalid_argument("Registers are running out!");
+        }
     }
     out << "  " << std::left << std::setw(INSTR_WIDTH) << arith_op << " " << reg_name << ", " << lhs_name << ", " << rhs_name << std::endl;
+    if (compare_eq) {
+        // because e.g., a <= b <=> !(a > b), now we are doing the ! part
+        out << "  " << std::left << std::setw(INSTR_WIDTH) << "seqz" << " " << reg_name << ", " << reg_name << std::endl;
+        // alternatively, xori reg, reg, 1 can be used.
+    }
     return reg_name;
 }
 
