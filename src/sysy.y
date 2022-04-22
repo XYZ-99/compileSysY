@@ -30,7 +30,7 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN
+%token INT RETURN CONST
 %token <str_val> IDENT REL_OP EQUAL_OP AND_OP OR_OP
 %token <int_val> INT_CONST
 
@@ -40,8 +40,9 @@ using namespace std;
 %left '*' '/'
 
 // 非终结符的类型定义
-%type <ast_val> FuncDef FuncType Block Stmt Exp UnaryExp PrimaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp
-%type <str_val> AddOp MulOp
+%type <ast_val> FuncDef FuncType Decl ConstDecl ConstDef ConstDefList ConstInitVal BlockItem BlockItemList
+%type <ast_val> Block Stmt Exp UnaryExp PrimaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp ConstExp
+%type <str_val> AddOp MulOp LVal BType
 %type <int_val> Number UnaryOp
 
 %%
@@ -51,6 +52,59 @@ CompUnit
     auto comp_unit = make_unique<CompUnitAST>();
     comp_unit->func_def = unique_ptr<BaseAST>($1);
     ast = move(comp_unit);
+  }
+  ;
+
+Decl
+  : ConstDecl {
+    auto ast = new DeclAST();
+    ast->const_decl = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  ;
+
+ConstDecl
+  : CONST BType ConstDefList ';' {
+    auto ast = new ConstDeclAST();
+    ast->btype = *unique_ptr<string>($2);
+    ast->const_def_list_ast = unique_ptr<BaseAST>($3);
+    $$ = ast;
+  }
+  ;
+
+ConstDefList
+  : ConstDef {
+    auto ast = new ConstDefListAST();
+    ast->const_def_list.push_back(unique_ptr<BaseAST>($1));
+    $$ = ast;
+  }
+  | ConstDefList ',' ConstDef {
+    auto ast = (ConstDefListAST*)($1);
+    ast->const_def_list.push_back(unique_ptr<BaseAST>($3));
+    $$ = ast;
+  }
+  ;
+
+BType
+  : INT {
+    $$ = new string("int");
+  }
+  ;
+
+ConstDef
+  : IDENT '=' ConstInitVal {
+    auto ast = new ConstDefAST();
+    ast->ident = *unique_ptr<string>($1);
+    ast->const_init_val = unique_ptr<BaseAST>($3);
+    $$ = ast;
+  }
+  ;
+
+ConstInitVal
+  : ConstExp {
+    auto ast = new ConstInitValAST();
+    ast->const_exp = unique_ptr<BaseAST>($1);
+    $$ = ast;
   }
   ;
 
@@ -74,10 +128,43 @@ FuncType
   ;
 
 Block
-  : '{' Stmt '}' {
+  : '{' BlockItemList '}' {
     auto ast = new BlockAST();
-    ast->stmt = unique_ptr<BaseAST>($2);
+    ast->block_item_list = unique_ptr<BaseAST>($2);
     $$ = ast;
+  }
+  ;
+
+BlockItemList
+  : /* empty */
+  {
+    auto ast = new BlockItemListAST();
+    // Since there is no BlockItem now
+    $$ = ast;
+  }
+  | BlockItemList BlockItem {
+    auto ast = (BlockItemListAST*)($1);
+    ast->block_item_list.push_back(unique_ptr<BaseAST>($2));
+    $$ = ast;
+  }
+  ;
+
+BlockItem
+  : Decl {
+    auto ast = new BlockItemAST();
+    ast->decl = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  | Stmt {
+    auto ast = new BlockItemAST();
+    ast->stmt = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  ;
+
+LVal
+  : IDENT {
+    $$ = $1;
   }
   ;
 
@@ -104,6 +191,11 @@ PrimaryExp
     ast->exp = unique_ptr<BaseAST>($2);
     $$ = ast;
   }
+  | LVal {
+    auto ast = new PrimaryExpAST();
+    ast->l_val = *unique_ptr<string>($1);
+    $$ = ast;
+  }
   | Number {
     auto ast = new PrimaryExpAST();
     ast->number = make_unique<int>($1);
@@ -114,6 +206,14 @@ PrimaryExp
 Number
   : INT_CONST {
     $$ = $1;
+  }
+  ;
+
+ConstExp
+  : Exp {
+    auto ast = new ConstExpAST();
+    ast->exp = unique_ptr<BaseAST>($1);
+    $$ = ast;
   }
   ;
 
@@ -164,7 +264,6 @@ MulOp
     $$ = new string("%");
   }
   ;
-
 
 MulExp
   : UnaryExp {
