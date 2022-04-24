@@ -348,7 +348,34 @@ public:
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
+        std::string ret_str;
+        if (primary_exp != nullptr) {
+            ret_str = primary_exp->ComputeConstVal(out);
+        } else if (unary_exp != nullptr) {
+            ret_str = unary_exp->ComputeConstVal(out);
+            switch (unary_op) {
+                case UNARY_PLUS:
+                    // Do nothing
+                    break;
+                case UNARY_MINUS: {
+                    int ret_val = std::stoi(ret_str);
+                    ret_val = -ret_val;
+                    ret_str = std::to_string(ret_val);
+                    break;
+                }
+                case UNARY_NEG: {
+                    int ret_val = std::stoi(ret_str);
+                    ret_val = !ret_val;
+                    ret_str = std::to_string(ret_val);
+                    break;
+                }
+                default:
+                    throw std::invalid_argument("unary_op is none of those in the enum!");
+            }
+        } else {
+            throw std::invalid_argument("primary_exp and unary_exp are both nullptr!");
+        }
+        return ret_str;
     }
 };
 
@@ -374,7 +401,17 @@ public:
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
+        std::string ret_str;
+        if (exp != nullptr) {
+            ret_str = exp->ComputeConstVal(out);
+        } else if (!l_val.empty()) {
+            ret_str = symbol_table[l_val];
+        } else if (number != nullptr) {
+            ret_str = std::to_string(*number);
+        } else {
+            throw std::invalid_argument("PrimaryExpAST: ComputeConstVal: exp and number are both nullptr!");
+        }
+        return ret_str;
     }
 };
 
@@ -416,7 +453,33 @@ public:
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
+        if (!op.empty()) {
+            // MulExp ::= MulExp ("*" | "/" | "%") UnaryExp;
+            std::string lhs_val_str = mul_exp->ComputeConstVal(out);
+            std::string rhs_val_str = unary_exp->ComputeConstVal(out);
+
+            int lhs_val = std::stoi(lhs_val_str);
+            int rhs_val = std::stoi(rhs_val_str);
+
+            int result;
+            if (op == "*") {
+                result = lhs_val * rhs_val;
+            } else if (op == "/") {
+                result = lhs_val / rhs_val;
+            } else if (op == "%") {
+                result = lhs_val % rhs_val;
+            } else {
+                std::cout << "------ Error Information ------" << std::endl;
+                std::cout << "In MulExpAST: invalid eq_op: " << op << std::endl;
+                throw std::invalid_argument("invalid argument");
+            }
+
+            std::string result_str = std::to_string(result);
+            return result_str;
+        } else {
+            // MulExp ::= UnaryExp;
+            return unary_exp->ComputeConstVal(out);
+        }
     }
 };
 
@@ -456,7 +519,31 @@ public:
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
+        if (!op.empty()) {
+            // AddExp ::= AddExp ("+" | "-") MulExp;
+            std::string lhs_val_str = add_exp->ComputeConstVal(out);
+            std::string rhs_val_str = mul_exp->ComputeConstVal(out);
+
+            int lhs_val = std::stoi(lhs_val_str);
+            int rhs_val = std::stoi(rhs_val_str);
+
+            int result;
+            if (op == "+") {
+                result = lhs_val + rhs_val;
+            } else if (op == "-") {
+                result = lhs_val - rhs_val;
+            } else {
+                std::cout << "------ Error Information ------" << std::endl;
+                std::cout << "In AddExpAST: invalid eq_op: " << op << std::endl;
+                throw std::invalid_argument("invalid argument");
+            }
+
+            std::string result_str = std::to_string(result);
+            return result_str;
+        } else {
+            // AddExp ::= MulExp;
+            return mul_exp->ComputeConstVal(out);
+        }
     }
 };
 
@@ -500,7 +587,35 @@ public:
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
+        if (!rel_op.empty()) {
+            // RelExp ::= RelExp ("<" | ">" | "<=" | ">=") AddExp;
+            std::string lhs_val_str = rel_exp->ComputeConstVal(out);
+            std::string rhs_val_str = add_exp->ComputeConstVal(out);
+
+            int lhs_val = std::stoi(lhs_val_str);
+            int rhs_val = std::stoi(rhs_val_str);
+
+            int result;
+            if (rel_op == ">") {
+                result = (lhs_val > rhs_val);
+            } else if (rel_op == "<") {
+                result = (lhs_val < rhs_val);
+            } else if (rel_op == ">=") {
+                result = (lhs_val >= rhs_val);
+            } else if (rel_op == "<=") {
+                result = (lhs_val <= rhs_val);
+            } else {
+                std::cout << "------ Error Information ------" << std::endl;
+                std::cout << "In RelExpAST: invalid eq_op: " << rel_op << std::endl;
+                throw std::invalid_argument("invalid argument");
+            }
+
+            std::string result_str = std::to_string(result);
+            return result_str;
+        } else {
+            // RelExp ::= AddExp;
+            return add_exp->ComputeConstVal(out);
+        }
     }
 };
 
@@ -540,7 +655,31 @@ public:
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
+        if (eq_exp != nullptr) {
+            // EqExp ::= EqExp ("==" | "!=") RelExp;
+            std::string lhs_val_str = eq_exp->ComputeConstVal(out);
+            std::string rhs_val_str = rel_exp->ComputeConstVal(out);
+
+            int lhs_val = std::stoi(lhs_val_str);
+            int rhs_val = std::stoi(rhs_val_str);
+
+            int result;
+            if (eq_op == "==") {
+                result = (lhs_val == rhs_val);
+            } else if (eq_op == "!=") {
+                result = (lhs_val != rhs_val);
+            } else {
+                std::cout << "------ Error Information ------" << std::endl;
+                std::cout << "In EqExpAST: invalid eq_op: " << eq_op << std::endl;
+                throw std::invalid_argument("invalid argument");
+            }
+
+            std::string result_str = std::to_string(result);
+            return result_str;
+        } else {
+            // EqExp ::= RelExp;
+            return rel_exp->ComputeConstVal(out);
+        }
     }
 };
 
@@ -575,7 +714,20 @@ public:
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
+        if (l_and_exp != nullptr) {
+            // LAndExp ::= LAndExp "&&" EqExp;
+            std::string lhs_val_str = l_and_exp->ComputeConstVal(out);
+            std::string rhs_val_str = eq_exp->ComputeConstVal(out);
+
+            int lhs_val = std::stoi(lhs_val_str);
+            int rhs_val = std::stoi(rhs_val_str);
+            int result = lhs_val && rhs_val;
+            std::string result_str = std::to_string(result);
+            return result_str;
+        } else {
+            // LAndExp ::= EqExp
+            return eq_exp->ComputeConstVal(out);
+        }
     }
 };
 
@@ -607,8 +759,20 @@ public:
         }
     }
     std::string ComputeConstVal(std::ostream& out) const override {
-        // TODO: compute the raw value for const
-        return std::string("2");
+        if (l_or_exp != nullptr) {
+            // LOrExp ::= LOrExp "||" LAndExp;
+            std::string lhs_val = l_or_exp->ComputeConstVal(out);
+            std::string rhs_val = l_and_exp->ComputeConstVal(out);
+
+            int lhs_val_int = std::stoi(lhs_val);
+            int rhs_val_int = std::stoi(rhs_val);
+            int result = lhs_val_int || rhs_val_int;
+            std::string result_str = std::to_string(result);
+            return result_str;
+        } else {
+            // LOrExp ::= LAndExp;
+            return l_and_exp->ComputeConstVal(out);
+        }
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
 };
