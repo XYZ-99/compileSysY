@@ -39,6 +39,14 @@ public:
     static std::map<std::string, std::string> symbol_table;
 };
 
+//class VarDeclAST : public BaseAST {
+//public:
+//    void Dump(std::ostream& out) const override { }
+//    std::string DumpExp(int& temp_var_start, std::ostream& out) const override { return std::string(""); }
+//    void InsertSymbol(std::string btype, std::ostream& out) const override { }
+//    std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
+//};
+
 // CompUnit 是 BaseAST
 class CompUnitAST : public BaseAST {
 public:
@@ -60,11 +68,18 @@ public:
 class DeclAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> const_decl;
+    std::unique_ptr<BaseAST> var_decl;
     void Dump(std::ostream& out) const override {
         // For now, because the Decl only declares a value that can be directly computed,
         // we just compute the value,
         // and add it into the symbol table.
-        const_decl->Dump(out);
+        if (const_decl != nullptr) {
+            const_decl->Dump(out);
+        } else if (var_decl != nullptr) {
+            var_decl->Dump(out);
+        } else {
+            throw std::invalid_argument("DeclAST: both members are null_ptr!");
+        }
     }
     std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
         return std::string("");
@@ -139,6 +154,68 @@ public:
         return const_exp->ComputeConstVal(out);
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
+};
+
+class VarDeclAST : public BaseAST {
+public:
+    std::string btype;
+    std::unique_ptr<BaseAST> var_def_list_ast;
+    void Dump(std::ostream& out) const override {
+        var_def_list_ast->InsertSymbol(btype, out);
+    }
+    std::string DumpExp(int& temp_var_start, std::ostream& out) const override { return std::string(""); }
+    void InsertSymbol(std::string btype, std::ostream& out) const override { }
+    std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
+};
+
+class VarDefListAST : public BaseAST {
+public:
+    std::vector<std::unique_ptr<BaseAST> > var_def_list;
+    void Dump(std::ostream& out) const override { }
+    std::string DumpExp(int& temp_var_start, std::ostream& out) const override { return {""}; }
+    void InsertSymbol(std::string btype, std::ostream& out) const override {
+        for (auto it = var_def_list.begin();
+             it != var_def_list.end();
+             it++) {
+            (*it)->InsertSymbol(btype, out);
+        }
+    }
+    std::string ComputeConstVal(std::ostream& out) const override { return {""}; }
+};
+
+class VarDefAST : public BaseAST {
+public:
+    std::string ident;
+    std::unique_ptr<BaseAST> init_val;
+    void Dump(std::ostream& out) const override { }
+    std::string DumpExp(int& temp_var_start, std::ostream& out) const override { return std::string(""); }
+    void InsertSymbol(std::string btype, std::ostream& out) const override {
+        // e.g. @x = alloc i32
+        std::string koopa_var_name = std::string("@") + ident;
+        out << "  " << koopa_var_name << " = alloc ";
+        if (btype == "int") {
+            out << "i32" << std::endl;
+        } else {
+            std::string error_info = "VarDefAST: unexpected BType: ";
+            error_info = error_info + btype;
+            throw std::invalid_argument(error_info);
+        }
+
+        // e.g. store 10, @x
+        if (init_val != nullptr) {
+            // We need a ComputeVarVal?
+        }
+    }
+    std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
+};
+
+class InitValAST : public BaseAST { // TODO
+public:
+    std::unique_ptr<BaseAST> exp;
+    void Dump(std::ostream& out) const override { }
+    std::string DumpExp(int& temp_var_start, std::ostream& out) const override { return std::string(""); }
+    void InsertSymbol(std::string btype, std::ostream& out) const override { }
+    std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
 };
 
 class ConstExpAST : public BaseAST {
@@ -238,7 +315,7 @@ public:
             // BlockItem ::= Stmt
             stmt->Dump(out);
         } else {
-            throw std::invalid_argument("BlockItemAST: bothe decl and stmt are nullptr!");
+            throw std::invalid_argument("BlockItemAST: both decl and stmt are nullptr!");
         }
     }
     std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
@@ -268,6 +345,7 @@ public:
 class StmtAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
+    std::string l_val;
     void Dump(std::ostream& out) const override {
         int temp_var_start = 0;
         std::string temp_var = exp->DumpExp(temp_var_start, out);
