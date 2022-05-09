@@ -72,7 +72,7 @@ Decl
 ConstDecl
   : CONST BType ConstDefList ';' {
     auto ast = new ConstDeclAST();
-    ast->btype = *unique_ptr<string>($2);
+    ast->btype = "const " + *unique_ptr<string>($2);
     ast->const_def_list_ast = unique_ptr<BaseAST>($3);
     $$ = ast;
   }

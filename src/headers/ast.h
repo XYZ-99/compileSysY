@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 #include <map>
+#include <cassert>
 
 
 class Variable {
@@ -15,19 +16,20 @@ class Variable {
 public:
     std::string type;
     std::string ident;
-    std::unique_ptr<int> const_val_ptr;
+    std::optional<int> const_val;
     Variable(std::string _type,
              std::string _ident,
-             std::unique_ptr<int> _const_val_ptr = nullptr) {
+             std::optional<int> _const_val = std::nullopt) {
         type = _type;
         ident = _ident;
-        const_val_ptr = std::move(_const_val_ptr);
+        const_val = _const_val;
     }
     bool operator==(Variable& other) const {
         if (this->type == other.type &&
-            this->ident == other.ident &&
-            *(this->const_val_ptr) == *(other.const_val_ptr)) {
-            return true;
+            this->ident == other.ident) {
+            if (const_val && other.const_val) {
+                return const_val.value() == other.const_val.value();
+            }
         }
         return false;
     }
@@ -125,11 +127,11 @@ public:
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         std::string computed_val = const_init_val->ComputeConstVal(out);
-        std::unique_ptr<int> const_init_val_int_ptr = std::make_unique<int>(std::stoi(computed_val));
+        std::optional<int> const_init_val_int(std::stoi(computed_val));
         auto new_var = std::make_unique<Variable>(btype,
                                                                        ident,
-                                                                       const_init_val_int_ptr);
-        symbol_table[ident] = computed_val;
+                                                                       const_init_val_int);
+        symbol_table[ident] = std::move(new_var);
     }
     std::string ComputeConstVal(std::ostream& out) const override {
         return std::string("");
@@ -216,7 +218,11 @@ public:
         // e.g. store 10, @x
         if (init_val != nullptr) {
             std::string computed_init_val = init_val->ComputeInitVal(out);
-
+            std::optional<int> const_init_val_int(std::stoi(computed_init_val));
+            auto new_var = std::make_unique<Variable>(btype,
+                                                      ident,
+                                                      const_init_val_int);
+            symbol_table[ident] = std::move(new_var);
             out << "  " << "store " << computed_init_val << ", " << koopa_var_name << std::endl;
         }
     }
@@ -368,7 +374,7 @@ public:
             // DumpExp
             int temp_var_start = 0;
             std::string temp_var = exp->DumpExp(temp_var_start, out);
-
+            // TODO: make temp_var_start a static member!
             // store
             std::string l_val_name = std::string("@") + l_val;
             out << "  store " << temp_var << ", " << l_val_name << std::endl;
@@ -500,16 +506,18 @@ public:
         if (exp != nullptr) {
             ret_str = exp->DumpExp(temp_var_start, out);
         } else if (!l_val.empty()) {
-            std::unique_ptr<Variable> var = std::move(symbol_table[l_val]);
-            if (var->type == "const int") {
-                ret_str = std::to_string(*(var->const_val_ptr));
-            } else if (var->type == "int") {
+            const Variable var = *(symbol_table[l_val]);
+            if (var.type == "const int") {
+                assert(var.const_val);  // the const_val must have been computed
+                ret_str = std::to_string(var.const_val.value());
+            } else if (var.type == "int") {
                 std::string temp_var = "%" + std::to_string(temp_var_start);
                 temp_var_start++;
                 out << "  " << temp_var << " = load " << "@" << l_val << std::endl;
+                ret_str = temp_var;
             } else {
                 std::string error_info = "PrimaryExpAST(DumpExp): unexpected lval type: ";
-                error_info = error_info + var->type;
+                error_info = error_info + var.type;
                 throw std::invalid_argument(error_info);
             }
         } else if (number != nullptr) {
@@ -525,13 +533,14 @@ public:
         if (exp != nullptr) {
             ret_str = exp->ComputeConstVal(out);
         } else if (!l_val.empty()) {
-            std::unique_ptr<Variable> var = std::move(symbol_table[l_val]);
-            if (var->type == "const int") {
-                ret_str = std::to_string(*(var->const_val_ptr));
+            const Variable var = *(symbol_table[l_val]);
+            if (var.type == "const int") {
+                assert(var.const_val);  // the const_val must have been computed
+                ret_str = std::to_string(var.const_val.value());
             } else {
                 // Since we're computing ConstVal, var cannot be used
                 std::string error_info = "PrimaryExpAST(ComputeConstVal): unexpected lval type: ";
-                error_info = error_info + var->type;
+                error_info = error_info + var.type;
                 throw std::invalid_argument(error_info);
             }
         } else if (number != nullptr) {
