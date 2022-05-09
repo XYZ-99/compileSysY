@@ -15,13 +15,18 @@ class Variable {
 public:
     std::string type;
     std::string ident;
-    Variable(std::string _type, std::string _ident) {
-        type = std::move(_type);
-        ident = std::move(_ident);
+    std::unique_ptr<int> const_val_ptr;
+    Variable(std::string _type,
+             std::string _ident,
+             std::unique_ptr<int> _const_val_ptr = nullptr) {
+        type = _type;
+        ident = _ident;
+        const_val_ptr = std::move(_const_val_ptr);
     }
     bool operator==(Variable& other) const {
         if (this->type == other.type &&
-            this->ident == other.ident) {
+            this->ident == other.ident &&
+            *(this->const_val_ptr) == *(other.const_val_ptr)) {
             return true;
         }
         return false;
@@ -36,7 +41,10 @@ public:
     virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const = 0;
     virtual void InsertSymbol(std::string btype, std::ostream& out = std::cout) const = 0;
     virtual std::string ComputeConstVal(std::ostream& out = std::cout) const = 0;
-    static std::map<std::string, std::string> symbol_table;
+    virtual std::string ComputeInitVal(std::ostream& out = std::cout) const {
+        throw std::invalid_argument("Used BaseAST ComputeInitVal!");
+    }
+    static std::map<std::string, std::unique_ptr<Variable> > symbol_table;
 };
 
 //class VarDeclAST : public BaseAST {
@@ -117,6 +125,10 @@ public:
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         std::string computed_val = const_init_val->ComputeConstVal(out);
+        std::unique_ptr<int> const_init_val_int_ptr = std::make_unique<int>(std::stoi(computed_val));
+        auto new_var = std::make_unique<Variable>(btype,
+                                                                       ident,
+                                                                       const_init_val_int_ptr);
         symbol_table[ident] = computed_val;
     }
     std::string ComputeConstVal(std::ostream& out) const override {
@@ -203,19 +215,24 @@ public:
 
         // e.g. store 10, @x
         if (init_val != nullptr) {
-            // We need a ComputeVarVal?
+            std::string computed_init_val = init_val->ComputeInitVal(out);
+
+            out << "  " << "store " << computed_init_val << ", " << koopa_var_name << std::endl;
         }
     }
     std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
 };
 
-class InitValAST : public BaseAST { // TODO
+class InitValAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
     void Dump(std::ostream& out) const override { }
     std::string DumpExp(int& temp_var_start, std::ostream& out) const override { return std::string(""); }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
+    std::string ComputeInitVal(std::ostream& out) const override {
+        return exp->ComputeConstVal(out);
+    }
 };
 
 class ConstExpAST : public BaseAST {
@@ -347,11 +364,23 @@ public:
     std::unique_ptr<BaseAST> exp;
     std::string l_val;
     void Dump(std::ostream& out) const override {
-        int temp_var_start = 0;
-        std::string temp_var = exp->DumpExp(temp_var_start, out);
-        out << "  " << "ret";
-        out << " ";
-        out << temp_var << std::endl;
+        if (!l_val.empty()) {
+            // DumpExp
+            int temp_var_start = 0;
+            std::string temp_var = exp->DumpExp(temp_var_start, out);
+
+            // store
+            std::string l_val_name = std::string("@") + l_val;
+            out << "  store " << temp_var << ", " << l_val_name << std::endl;
+        } else if (exp != nullptr) {
+            int temp_var_start = 0;
+            std::string temp_var = exp->DumpExp(temp_var_start, out);
+            out << "  " << "ret";
+            out << " ";
+            out << temp_var << std::endl;
+        } else {
+            throw std::invalid_argument("StmtAST: both members are empty!");
+        }
     }
     std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
         return std::string("");
@@ -457,6 +486,8 @@ public:
     }
 };
 
+// TODO: LValAST: for multi-dimensional arrays
+
 class PrimaryExpAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
@@ -469,7 +500,18 @@ public:
         if (exp != nullptr) {
             ret_str = exp->DumpExp(temp_var_start, out);
         } else if (!l_val.empty()) {
-            ret_str = symbol_table[l_val];
+            std::unique_ptr<Variable> var = std::move(symbol_table[l_val]);
+            if (var->type == "const int") {
+                ret_str = std::to_string(*(var->const_val_ptr));
+            } else if (var->type == "int") {
+                std::string temp_var = "%" + std::to_string(temp_var_start);
+                temp_var_start++;
+                out << "  " << temp_var << " = load " << "@" << l_val << std::endl;
+            } else {
+                std::string error_info = "PrimaryExpAST(DumpExp): unexpected lval type: ";
+                error_info = error_info + var->type;
+                throw std::invalid_argument(error_info);
+            }
         } else if (number != nullptr) {
             ret_str = std::to_string(*number);
         } else {
@@ -483,7 +525,15 @@ public:
         if (exp != nullptr) {
             ret_str = exp->ComputeConstVal(out);
         } else if (!l_val.empty()) {
-            ret_str = symbol_table[l_val];
+            std::unique_ptr<Variable> var = std::move(symbol_table[l_val]);
+            if (var->type == "const int") {
+                ret_str = std::to_string(*(var->const_val_ptr));
+            } else {
+                // Since we're computing ConstVal, var cannot be used
+                std::string error_info = "PrimaryExpAST(ComputeConstVal): unexpected lval type: ";
+                error_info = error_info + var->type;
+                throw std::invalid_argument(error_info);
+            }
         } else if (number != nullptr) {
             ret_str = std::to_string(*number);
         } else {
