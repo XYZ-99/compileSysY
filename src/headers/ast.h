@@ -40,12 +40,15 @@ class BaseAST {
 public:
     virtual ~BaseAST() = default;
     virtual void Dump(std::ostream& out = std::cout) const = 0;
-    virtual std::string DumpExp(int& temp_var_start, std::ostream& out = std::cout) const = 0;
+    virtual std::string DumpExp(std::ostream& out = std::cout) const {
+        throw std::invalid_argument("Used BaseAST DumpExp!");
+    }
     virtual void InsertSymbol(std::string btype, std::ostream& out = std::cout) const = 0;
     virtual std::string ComputeConstVal(std::ostream& out = std::cout) const = 0;
     virtual std::string ComputeInitVal(std::ostream& out = std::cout) const {
         throw std::invalid_argument("Used BaseAST ComputeInitVal!");
     }
+    inline static int temp_var = 0;  // TODO: search temp_var
     static std::map<std::string, std::unique_ptr<Variable> > symbol_table;
 };
 
@@ -65,9 +68,6 @@ public:
     void Dump(std::ostream& out) const override {
         func_def->Dump(out);
         out << std::endl;
-    }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        return std::string("");
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
@@ -91,9 +91,6 @@ public:
             throw std::invalid_argument("DeclAST: both members are null_ptr!");
         }
     }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        return std::string("");
-    }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
         return std::string("");
@@ -108,9 +105,6 @@ public:
     void Dump(std::ostream& out) const override {
         const_def_list_ast->InsertSymbol(btype, out);
     }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        return std::string("");
-    }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
         return std::string("");
@@ -122,9 +116,6 @@ public:
     std::string ident;
     std::unique_ptr<BaseAST> const_init_val;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        return std::string("");
-    }
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         std::string computed_val = const_init_val->ComputeConstVal(out);
         std::optional<int> const_init_val_int(std::stoi(computed_val));
@@ -142,9 +133,6 @@ class ConstDefListAST : public BaseAST {
 public:
     std::vector<std::unique_ptr<BaseAST> > const_def_list;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        return std::string("");
-    }
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         for (auto it = const_def_list.begin();
              it != const_def_list.end();
@@ -161,9 +149,6 @@ class ConstInitValAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> const_exp;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        return std::string("");
-    }
     std::string ComputeConstVal(std::ostream& out) const override {
         return const_exp->ComputeConstVal(out);
     }
@@ -177,7 +162,6 @@ public:
     void Dump(std::ostream& out) const override {
         var_def_list_ast->InsertSymbol(btype, out);
     }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override { return std::string(""); }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
 };
@@ -186,7 +170,6 @@ class VarDefListAST : public BaseAST {
 public:
     std::vector<std::unique_ptr<BaseAST> > var_def_list;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override { return {""}; }
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         for (auto it = var_def_list.begin();
              it != var_def_list.end();
@@ -202,7 +185,6 @@ public:
     std::string ident;
     std::unique_ptr<BaseAST> init_val;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override { return std::string(""); }
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         // e.g. @x = alloc i32
         std::string koopa_var_name = std::string("@") + ident;
@@ -214,15 +196,12 @@ public:
             error_info = error_info + btype;
             throw std::invalid_argument(error_info);
         }
+        auto new_var = std::make_unique<Variable>(btype, ident);
+        symbol_table[ident] = std::move(new_var);
 
         // e.g. store 10, @x
         if (init_val != nullptr) {
             std::string computed_init_val = init_val->ComputeInitVal(out);
-            std::optional<int> const_init_val_int(std::stoi(computed_init_val));
-            auto new_var = std::make_unique<Variable>(btype,
-                                                      ident,
-                                                      const_init_val_int);
-            symbol_table[ident] = std::move(new_var);
             out << "  " << "store " << computed_init_val << ", " << koopa_var_name << std::endl;
         }
     }
@@ -233,11 +212,10 @@ class InitValAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override { return std::string(""); }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
     std::string ComputeInitVal(std::ostream& out) const override {
-        return exp->ComputeConstVal(out);
+        return exp->DumpExp(out);
     }
 };
 
@@ -245,9 +223,6 @@ class ConstExpAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        return std::string("");
-    }
     std::string ComputeConstVal(std::ostream& out) const override {
         return exp->ComputeConstVal(out);
     }
@@ -277,9 +252,6 @@ public:
         block->Dump(out);
         out << "}";
     }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        return std::string("");
-    }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
         return std::string("");
@@ -298,9 +270,6 @@ public:
             throw error_info;
         }
     }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        return std::string("");
-    }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
         return std::string("");
@@ -316,9 +285,6 @@ public:
              it++) {
             (*it)->Dump(out);
         }
-    }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        return std::string("");
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
@@ -341,9 +307,6 @@ public:
             throw std::invalid_argument("BlockItemAST: both decl and stmt are nullptr!");
         }
     }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        return std::string("");
-    }
     std::string ComputeConstVal(std::ostream& out) const override {
         return std::string("");
     }
@@ -355,9 +318,6 @@ public:
     std::unique_ptr<BaseAST> block_item_list;
     void Dump(std::ostream& out = std::cout) const override {
         block_item_list->Dump(out);
-    }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        return std::string("");
     }
     std::string ComputeConstVal(std::ostream& out) const override {
         return std::string("");
@@ -371,25 +331,19 @@ public:
     std::string l_val;
     void Dump(std::ostream& out) const override {
         if (!l_val.empty()) {
-            // DumpExp
-            int temp_var_start = 0;
-            std::string temp_var = exp->DumpExp(temp_var_start, out);
+            std::string temp_var = exp->DumpExp(out);
             // TODO: make temp_var_start a static member!
             // store
             std::string l_val_name = std::string("@") + l_val;
             out << "  store " << temp_var << ", " << l_val_name << std::endl;
         } else if (exp != nullptr) {
-            int temp_var_start = 0;
-            std::string temp_var = exp->DumpExp(temp_var_start, out);
+            std::string temp_var = exp->DumpExp(out);
             out << "  " << "ret";
             out << " ";
             out << temp_var << std::endl;
         } else {
             throw std::invalid_argument("StmtAST: both members are empty!");
         }
-    }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        return std::string("");
     }
     std::string ComputeConstVal(std::ostream& out) const override {
         return std::string("");
@@ -401,8 +355,8 @@ class ExpAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> l_or_exp;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
-        std::string temp_var = l_or_exp->DumpExp(temp_var_start, out);
+    std::string DumpExp(std::ostream& out) const override {
+        std::string temp_var = l_or_exp->DumpExp(out);
         return temp_var;
     }
     std::string ComputeConstVal(std::ostream& out) const override {
@@ -425,30 +379,30 @@ public:
     std::unique_ptr<BaseAST> unary_exp;
     unary_op_t unary_op;  // since once unary_exp is not nullptr, it must have been assigned
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
+    std::string DumpExp(std::ostream& out) const override {
         std::string ret_str;
         if (primary_exp != nullptr) {
-            ret_str = primary_exp->DumpExp(temp_var_start, out);
+            ret_str = primary_exp->DumpExp(out);
         } else if (unary_exp != nullptr) {
-            ret_str = unary_exp->DumpExp(temp_var_start, out);
+            ret_str = unary_exp->DumpExp(out);
             switch (unary_op) {
                 case UNARY_PLUS:
                     // Do nothing
                     break;
                 case UNARY_MINUS: {
-                    out << "  %" << temp_var_start << " = sub 0, " << ret_str << std::endl;
+                    out << "  %" << temp_var << " = sub 0, " << ret_str << std::endl;
                     std::ostringstream ret_stream;
-                    ret_stream << "%" << temp_var_start;
+                    ret_stream << "%" << temp_var;
                     ret_str = ret_stream.str();
-                    temp_var_start++;
+                    temp_var++;
                     break;
                 }
                 case UNARY_NEG: {
-                    out << "  %" << temp_var_start << " = eq " << ret_str << ", 0" << std::endl;
+                    out << "  %" << temp_var << " = eq " << ret_str << ", 0" << std::endl;
                     std::ostringstream ret_stream;
-                    ret_stream << "%" << temp_var_start;
+                    ret_stream << "%" << temp_var;
                     ret_str = ret_stream.str();
-                    temp_var_start++;
+                    temp_var++;
                     break;
                 }
                 default:
@@ -501,20 +455,20 @@ public:
     std::string l_val;
     // Notes: PrimaryExp ::= "(" Exp ")" | LVal | Number;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
+    std::string DumpExp(std::ostream& out) const override {
         std::string ret_str;
         if (exp != nullptr) {
-            ret_str = exp->DumpExp(temp_var_start, out);
+            ret_str = exp->DumpExp(out);
         } else if (!l_val.empty()) {
             const Variable var = *(symbol_table[l_val]);
             if (var.type == "const int") {
                 assert(var.const_val);  // the const_val must have been computed
                 ret_str = std::to_string(var.const_val.value());
             } else if (var.type == "int") {
-                std::string temp_var = "%" + std::to_string(temp_var_start);
-                temp_var_start++;
-                out << "  " << temp_var << " = load " << "@" << l_val << std::endl;
-                ret_str = temp_var;
+                std::string temp_var_str = "%" + std::to_string(temp_var);
+                temp_var++;
+                out << "  " << temp_var_str << " = load " << "@" << l_val << std::endl;
+                ret_str = temp_var_str;
             } else {
                 std::string error_info = "PrimaryExpAST(DumpExp): unexpected lval type: ";
                 error_info = error_info + var.type;
@@ -558,15 +512,15 @@ public:
     std::unique_ptr<BaseAST> mul_exp;
     std::string op;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
+    std::string DumpExp(std::ostream& out) const override {
         if (!op.empty()) {
             // MulExp ::= MulExp ("*" | "/" | "%") UnaryExp;
-            std::string lhs_name = mul_exp->DumpExp(temp_var_start, out);
-            std::string rhs_name = unary_exp->DumpExp(temp_var_start, out);
+            std::string lhs_name = mul_exp->DumpExp(out);
+            std::string rhs_name = unary_exp->DumpExp(out);
 
-            std::string temp_var = "%" + std::to_string(temp_var_start);
+            std::string temp_var_str = "%" + std::to_string(temp_var);
 
-            out << "  " << temp_var << " = ";
+            out << "  " << temp_var_str << " = ";
             if (op == "*") {
                 out << "mul";
             } else if (op == "/") {
@@ -580,11 +534,11 @@ public:
             }
             out << " " << lhs_name << ", " << rhs_name << std::endl;
 
-            temp_var_start++;
-            return temp_var;
+            temp_var++;
+            return temp_var_str;
         } else {
             // MulExp ::= UnaryExp;
-            std::string var_name = unary_exp->DumpExp(temp_var_start, out);
+            std::string var_name = unary_exp->DumpExp(out);
             return var_name;
         }
     }
@@ -626,15 +580,15 @@ public:
     std::unique_ptr<BaseAST> mul_exp;
     std::string op;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
+    std::string DumpExp(std::ostream& out) const override {
         if (!op.empty()) {
             // AddExp ::= AddExp ("+" | "-") MulExp;
-            std::string lhs_name = add_exp->DumpExp(temp_var_start, out);
-            std::string rhs_name = mul_exp->DumpExp(temp_var_start, out);
+            std::string lhs_name = add_exp->DumpExp(out);
+            std::string rhs_name = mul_exp->DumpExp(out);
 
-            std::string temp_var = "%" + std::to_string(temp_var_start);
+            std::string temp_var_str = "%" + std::to_string(temp_var);
 
-            out << "  " << temp_var << " = ";
+            out << "  " << temp_var_str << " = ";
             if (op == "+") {
                 out << "add";
             } else if (op == "-") {
@@ -646,11 +600,11 @@ public:
             }
             out << " " << lhs_name << ", " << rhs_name << std::endl;
 
-            temp_var_start++;
-            return temp_var;
+            temp_var++;
+            return temp_var_str;
         } else {
             // AddExp ::= MulExp;
-            std::string var_name = mul_exp->DumpExp(temp_var_start, out);
+            std::string var_name = mul_exp->DumpExp(out);
             return var_name;
         }
     }
@@ -690,15 +644,15 @@ public:
     std::unique_ptr<BaseAST> rel_exp;
     std::string rel_op;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
+    std::string DumpExp(std::ostream& out) const override {
         if (!rel_op.empty()) {
             // RelExp ::= RelExp ("<" | ">" | "<=" | ">=") AddExp;
-            std::string lhs_name = rel_exp->DumpExp(temp_var_start, out);
-            std::string rhs_name = add_exp->DumpExp(temp_var_start, out);
+            std::string lhs_name = rel_exp->DumpExp(out);
+            std::string rhs_name = add_exp->DumpExp(out);
 
-            std::string temp_var = "%" + std::to_string(temp_var_start);
+            std::string temp_var_str = "%" + std::to_string(temp_var);
 
-            out << "  " << temp_var << " = ";
+            out << "  " << temp_var_str << " = ";
             if (rel_op == ">") {
                 out << "gt";
             } else if (rel_op == "<") {
@@ -714,11 +668,11 @@ public:
             }
             out << " " << lhs_name << ", " << rhs_name << std::endl;
 
-            temp_var_start++;
-            return temp_var;
+            temp_var++;
+            return temp_var_str;
         } else {
             // RelExp ::= AddExp;
-            std::string var_name = add_exp->DumpExp(temp_var_start, out);
+            std::string var_name = add_exp->DumpExp(out);
             return var_name;
         }
     }
@@ -762,15 +716,15 @@ public:
     std::unique_ptr<BaseAST> eq_exp;
     std::string eq_op;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
+    std::string DumpExp(std::ostream& out) const override {
         if (eq_exp != nullptr) {
             // EqExp ::= EqExp ("==" | "!=") RelExp;
-            std::string lhs_name = eq_exp->DumpExp(temp_var_start, out);
-            std::string rhs_name = rel_exp->DumpExp(temp_var_start, out);
+            std::string lhs_name = eq_exp->DumpExp(out);
+            std::string rhs_name = rel_exp->DumpExp(out);
 
-            std::string temp_var = "%" + std::to_string(temp_var_start);
+            std::string temp_var_str = "%" + std::to_string(temp_var);
 
-            out << "  " << temp_var << " = ";
+            out << "  " << temp_var_str << " = ";
             if (eq_op == "==") {
                 out << "eq";
             } else if (eq_op == "!=") {
@@ -782,11 +736,11 @@ public:
             }
             out << " " << lhs_name << ", " << rhs_name << std::endl;
 
-            temp_var_start++;
-            return temp_var;
+            temp_var++;
+            return temp_var_str;
         } else {
             // EqExp ::= RelExp;
-            std::string var_name = rel_exp->DumpExp(temp_var_start, out);
+            std::string var_name = rel_exp->DumpExp(out);
             return var_name;
         }
     }
@@ -826,26 +780,26 @@ public:
     std::unique_ptr<BaseAST> l_and_exp;
     // we do not need an and_op since there is only one choice.
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
+    std::string DumpExp(std::ostream& out) const override {
         if (l_and_exp != nullptr) {
             // LAndExp ::= LAndExp "&&" EqExp;
-            std::string lhs_name = l_and_exp->DumpExp(temp_var_start, out);
-            std::string rhs_name = eq_exp->DumpExp(temp_var_start, out);
+            std::string lhs_name = l_and_exp->DumpExp(out);
+            std::string rhs_name = eq_exp->DumpExp(out);
 
             // snez t0, t0
             // snez t1, t1
             // and  t0, t0, t1
-            std::string temp_var_lhs = "%" + std::to_string(temp_var_start++);
+            std::string temp_var_lhs = "%" + std::to_string(temp_var++);
             out << "  " << temp_var_lhs << " = " << "ne " << lhs_name << ", 0" << std::endl;
-            std::string temp_var_rhs = "%" + std::to_string(temp_var_start++);
+            std::string temp_var_rhs = "%" + std::to_string(temp_var++);
             out << "  " << temp_var_rhs << " = " << "ne " << rhs_name << ", 0" << std::endl;
-            std::string temp_var = "%" + std::to_string(temp_var_start++);
-            out << "  " << temp_var << " = " << "and " << temp_var_lhs << ", " << temp_var_rhs << std::endl;
+            std::string temp_var_str = "%" + std::to_string(temp_var++);
+            out << "  " << temp_var_str << " = " << "and " << temp_var_lhs << ", " << temp_var_rhs << std::endl;
 
-            return temp_var;
+            return temp_var_str;
         } else {
             // LAndExp ::= EqExp
-            std::string var_name = eq_exp->DumpExp(temp_var_start, out);
+            std::string var_name = eq_exp->DumpExp(out);
             return var_name;
         }
     }
@@ -874,24 +828,24 @@ public:
     std::unique_ptr<BaseAST> l_or_exp;
     // we do not need an or_op since there is only one choice.
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(int& temp_var_start, std::ostream& out) const override {
+    std::string DumpExp(std::ostream& out) const override {
         if (l_or_exp != nullptr) {
             // LOrExp ::= LOrExp "||" LAndExp;
-            std::string lhs_name = l_or_exp->DumpExp(temp_var_start, out);
-            std::string rhs_name = l_and_exp->DumpExp(temp_var_start, out);
+            std::string lhs_name = l_or_exp->DumpExp(out);
+            std::string rhs_name = l_and_exp->DumpExp(out);
 
             // or t0, t0, t1
             // snez t0, t0
-            std::string temp_var_middle = "%" + std::to_string(temp_var_start++);
+            std::string temp_var_middle = "%" + std::to_string(temp_var++);
             out << "  " << temp_var_middle << " = " << "or " << lhs_name << ", " << rhs_name << std::endl;
 
-            std::string temp_var = "%" + std::to_string(temp_var_start++);
-            out << "  " << temp_var << " = " << "ne " << temp_var_middle << ", 0" << std::endl;
+            std::string temp_var_str = "%" + std::to_string(temp_var++);
+            out << "  " << temp_var_str << " = " << "ne " << temp_var_middle << ", 0" << std::endl;
 
-            return temp_var;
+            return temp_var_str;
         } else {
             // LOrExp ::= LAndExp;
-            std::string var_name = l_and_exp->DumpExp(temp_var_start, out);
+            std::string var_name = l_and_exp->DumpExp(out);
             return var_name;
         }
     }
