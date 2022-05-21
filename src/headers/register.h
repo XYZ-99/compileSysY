@@ -44,17 +44,17 @@ public:
                                           "a7"};
 
     RegisterAllocator() {
-        used[REG_A0] = 1;  // Reserve for return
+        used[REG_A0] = true;  // Reserve for return
     }
 
     std::string allocate() {
         for (int i = 0; i < TOTAL_AVAIL_REG_NUM; i++) {
             if (!used[i]) {
-                used[i] = 1;
+                used[i] = true;
                 return register_names[i];
             }
         }
-        return std::string();  // remember to check empty string
+        return {};  // remember to check empty string
     }
 };
 
