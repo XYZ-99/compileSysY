@@ -97,10 +97,10 @@ public:
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         std::string computed_val = const_init_val->ComputeConstVal(out);
         std::optional<int> const_init_val_int(std::stoi(computed_val));
-        auto new_var = std::make_unique<Variable>(btype,
-                                                                       ident,
-                                                                       const_init_val_int);
-        scope.insert_var(ident, std::move(new_var));
+        auto new_var = Variable(btype,
+                                ident,
+                                const_init_val_int);
+        scope.insert_var(ident, new_var);
     }
     std::string ComputeConstVal(std::ostream& out) const override {
         return std::string("");
@@ -174,8 +174,8 @@ public:
             error_info = error_info + btype;
             throw std::invalid_argument(error_info);
         }
-        auto new_var = std::make_unique<Variable>(btype, ident);
-        scope.insert_var(ident, std::move(new_var));
+        auto new_var = Variable(btype, ident);
+        scope.insert_var(ident, new_var);
 
         // e.g. store 10, @x
         if (init_val != nullptr) {
@@ -459,7 +459,7 @@ public:
         if (exp != nullptr) {
             ret_str = exp->DumpExp(out);
         } else if (!l_val.empty()) {
-            const Variable var = *(scope.get_var_by_ident(l_val));
+            const Variable& var = scope.get_var_by_ident(l_val);
             if (var.type == "const int") {
                 assert(var.const_val);  // the const_val must have been computed
                 ret_str = std::to_string(var.const_val.value());
@@ -486,7 +486,7 @@ public:
         if (exp != nullptr) {
             ret_str = exp->ComputeConstVal(out);
         } else if (!l_val.empty()) {
-            const Variable var = *(scope.get_var_by_ident(l_val));
+            const Variable& var = scope.get_var_by_ident(l_val);
             if (var.type == "const int") {
                 assert(var.const_val);  // the const_val must have been computed
                 ret_str = std::to_string(var.const_val.value());

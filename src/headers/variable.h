@@ -17,6 +17,13 @@ public:
         ident = _ident;
         const_val = _const_val;
     }
+
+    Variable(const Variable& other) {
+        type = other.type;
+        ident = other.ident;
+        const_val = other.const_val;
+    }
+
     bool operator==(Variable& other) const {
         if (this->type == other.type &&
             this->ident == other.ident) {
