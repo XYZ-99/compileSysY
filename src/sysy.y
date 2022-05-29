@@ -223,12 +223,26 @@ Stmt
   : LVal '=' Exp ';' {
     auto ast = new StmtAST();
     ast->l_val = *unique_ptr<string>($1);
+    ast->type = StmtType::ASSIGN;
     ast->exp = unique_ptr<BaseAST>($3);
+    $$ = ast;
+  }
+  | Exp ';' {
+    auto ast = new StmtAST();
+    ast->exp = unique_ptr<BaseAST>($1);
+    ast->type = StmtType::EXP;
+    $$ = ast;
+  }
+  | Block {
+    auto ast = new StmtAST();
+    ast->block = unique_ptr<BaseAST>($1);
+    ast->type = StmtType::BLOCK;
     $$ = ast;
   }
   | RETURN Exp ';' {
     auto ast = new StmtAST();
     ast->exp = unique_ptr<BaseAST>($2);
+    ast->type = StmtType::RET_EXP;
     $$ = ast;
   }
   ;

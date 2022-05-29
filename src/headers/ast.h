@@ -9,31 +9,9 @@
 #include <map>
 #include <cassert>
 
+#include "scope.h"
+#include "variable.h"
 
-class Variable {
-    // Originallly this is for symbol table
-    // but since one ident can only be declared once
-public:
-    std::string type;
-    std::string ident;
-    std::optional<int> const_val;
-    Variable(std::string _type,
-             std::string _ident,
-             std::optional<int> _const_val = std::nullopt) {
-        type = _type;
-        ident = _ident;
-        const_val = _const_val;
-    }
-    bool operator==(Variable& other) const {
-        if (this->type == other.type &&
-            this->ident == other.ident) {
-            if (const_val && other.const_val) {
-                return const_val.value() == other.const_val.value();
-            }
-        }
-        return false;
-    }
-};
 
 // 所有 AST 的基类
 class BaseAST {
@@ -49,7 +27,7 @@ public:
         throw std::invalid_argument("Used BaseAST ComputeInitVal!");
     }
     inline static int temp_var = 0;  // TODO: search temp_var
-    static std::map<std::string, std::unique_ptr<Variable> > symbol_table;
+    static Scope scope;
 };
 
 //class VarDeclAST : public BaseAST {
@@ -122,7 +100,7 @@ public:
         auto new_var = std::make_unique<Variable>(btype,
                                                                        ident,
                                                                        const_init_val_int);
-        symbol_table[ident] = std::move(new_var);
+        scope.insert_var(ident, std::move(new_var));
     }
     std::string ComputeConstVal(std::ostream& out) const override {
         return std::string("");
@@ -197,7 +175,7 @@ public:
             throw std::invalid_argument(error_info);
         }
         auto new_var = std::make_unique<Variable>(btype, ident);
-        symbol_table[ident] = std::move(new_var);
+        scope.insert_var(ident, std::move(new_var));
 
         // e.g. store 10, @x
         if (init_val != nullptr) {
@@ -325,22 +303,43 @@ public:
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
 };
 
+enum class StmtType {
+    ASSIGN,
+    EXP,
+    BLOCK,
+    RET_EXP
+};
+
 class StmtAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
     std::string l_val;
+    std::unique_ptr<BaseAST> block;
+    StmtType type;
     void Dump(std::ostream& out) const override {
-        if (!l_val.empty()) {
+        if (type == StmtType::ASSIGN) {
+            assert(!l_val.empty());
             std::string temp_var = exp->DumpExp(out);
-            // TODO: make temp_var_start a static member!
             // store
             std::string l_val_name = std::string("@") + l_val;
             out << "  store " << temp_var << ", " << l_val_name << std::endl;
-        } else if (exp != nullptr) {
+        } else if (type == StmtType::EXP) {
+            // Stmt ::= [Exp] ";"
+            if (exp != nullptr) {
+                exp->DumpExp(out);
+            }
+        } else if (type == StmtType::BLOCK) {
+            // Stmt ::= Block
+            block->Dump(out);
+        } else if (type == StmtType::RET_EXP) {
+            // Stmt ::= "return" [Exp] ";"
             std::string temp_var = exp->DumpExp(out);
             out << "  " << "ret";
-            out << " ";
-            out << temp_var << std::endl;
+            if (exp != nullptr) {
+                out << " ";
+                out << temp_var;
+            }
+            out << std::endl;
         } else {
             throw std::invalid_argument("StmtAST: both members are empty!");
         }
@@ -460,7 +459,7 @@ public:
         if (exp != nullptr) {
             ret_str = exp->DumpExp(out);
         } else if (!l_val.empty()) {
-            const Variable var = *(symbol_table[l_val]);
+            const Variable var = *(scope.get_var_by_ident(l_val));
             if (var.type == "const int") {
                 assert(var.const_val);  // the const_val must have been computed
                 ret_str = std::to_string(var.const_val.value());
@@ -487,7 +486,7 @@ public:
         if (exp != nullptr) {
             ret_str = exp->ComputeConstVal(out);
         } else if (!l_val.empty()) {
-            const Variable var = *(symbol_table[l_val]);
+            const Variable var = *(scope.get_var_by_ident(l_val));
             if (var.type == "const int") {
                 assert(var.const_val);  // the const_val must have been computed
                 ret_str = std::to_string(var.const_val.value());
