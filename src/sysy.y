@@ -227,6 +227,11 @@ Stmt
     ast->exp = unique_ptr<BaseAST>($3);
     $$ = ast;
   }
+  | ';' {
+    auto ast = new StmtAST();
+    ast->type = StmtType::EXP;
+    $$ = ast;
+  }
   | Exp ';' {
     auto ast = new StmtAST();
     ast->exp = unique_ptr<BaseAST>($1);

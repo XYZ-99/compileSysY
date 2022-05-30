@@ -8,25 +8,25 @@
 class Variable {
 public:
     std::string type;
-    std::string ident;
+    std::string koopa_var_name;
     std::optional<int> const_val;
     Variable(std::string _type,
-             std::string _ident,
+             std::string _koopa_var_name,
              std::optional<int> _const_val = std::nullopt) {
         type = _type;
-        ident = _ident;
+        koopa_var_name = _koopa_var_name;
         const_val = _const_val;
     }
 
     Variable(const Variable& other) {
         type = other.type;
-        ident = other.ident;
+        koopa_var_name = other.koopa_var_name;
         const_val = other.const_val;
     }
 
     bool operator==(Variable& other) const {
         if (this->type == other.type &&
-            this->ident == other.ident) {
+            this->koopa_var_name == other.koopa_var_name) {
             if (const_val && other.const_val) {
                 return const_val.value() == other.const_val.value();
             }

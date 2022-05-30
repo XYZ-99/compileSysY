@@ -11,6 +11,7 @@
 
 #include "scope.h"
 #include "variable.h"
+#include "function.h"
 
 
 // 所有 AST 的基类
@@ -23,6 +24,9 @@ public:
     }
     virtual void InsertSymbol(std::string btype, std::ostream& out = std::cout) const = 0;
     virtual std::string ComputeConstVal(std::ostream& out = std::cout) const = 0;
+    virtual FuncType GetFuncTypeEnum() const {
+        throw std::invalid_argument("Used BaseAST GetFuncTypeEnum!");
+    }
     virtual std::string ComputeInitVal(std::ostream& out = std::cout) const {
         throw std::invalid_argument("Used BaseAST ComputeInitVal!");
     }
@@ -97,8 +101,9 @@ public:
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         std::string computed_val = const_init_val->ComputeConstVal(out);
         std::optional<int> const_init_val_int(std::stoi(computed_val));
+        std::string koopa_var_name = scope.current_func_ptr->get_koopa_var_name(ident);
         auto new_var = Variable(btype,
-                                ident,
+                                koopa_var_name,
                                 const_init_val_int);
         scope.insert_var(ident, new_var);
     }
@@ -165,7 +170,7 @@ public:
     void Dump(std::ostream& out) const override { }
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         // e.g. @x = alloc i32
-        std::string koopa_var_name = std::string("@") + ident;
+        std::string koopa_var_name = "@" + scope.current_func_ptr->get_koopa_var_name(ident);
         out << "  " << koopa_var_name << " = alloc ";
         if (btype == "int") {
             out << "i32" << std::endl;
@@ -174,7 +179,7 @@ public:
             error_info = error_info + btype;
             throw std::invalid_argument(error_info);
         }
-        auto new_var = Variable(btype, ident);
+        auto new_var = Variable(btype, koopa_var_name);
         scope.insert_var(ident, new_var);
 
         // e.g. store 10, @x
@@ -207,13 +212,15 @@ public:
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
 };
 
-// FuncDef 也是 BaseAST
 class FuncDefAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> func_type;
     std::string ident;
     std::unique_ptr<BaseAST> block;
     void Dump(std::ostream& out) const override {
+        FuncType type = func_type->GetFuncTypeEnum();
+        scope.enter_func(type, ident);
+
         out << "fun";
         out << " ";
         out << "@" << ident;
@@ -229,6 +236,8 @@ public:
         out << "%" << entry_name << ":" << std::endl;
         block->Dump(out);
         out << "}";
+
+        scope.exit_func();
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
@@ -246,6 +255,15 @@ public:
             std::string error_info = std::string("Unrecognized function type: ") +
                                      std::string(type);
             throw error_info;
+        }
+    }
+    FuncType GetFuncTypeEnum() const override {
+        if (type == "int") {
+            return FuncType::INT;
+        } else if (type == "void") {
+            return FuncType::VOID;
+        } else {
+            throw std::invalid_argument("Unidentified type in FuncTypeAST::GetFuncTypeEnum: " + type);
         }
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
@@ -321,8 +339,9 @@ public:
             assert(!l_val.empty());
             std::string temp_var = exp->DumpExp(out);
             // store
-            std::string l_val_name = std::string("@") + l_val;
-            out << "  store " << temp_var << ", " << l_val_name << std::endl;
+            // Find the koopa var name according to l_val
+            std::string koopa_var_name = scope.get_var_by_ident(l_val).koopa_var_name;
+            out << "  store " << temp_var << ", " << koopa_var_name << std::endl;
         } else if (type == StmtType::EXP) {
             // Stmt ::= [Exp] ";"
             if (exp != nullptr) {
@@ -330,7 +349,9 @@ public:
             }
         } else if (type == StmtType::BLOCK) {
             // Stmt ::= Block
+            scope.push_scope();
             block->Dump(out);
+            scope.pop_scope();
         } else if (type == StmtType::RET_EXP) {
             // Stmt ::= "return" [Exp] ";"
             std::string temp_var = exp->DumpExp(out);
@@ -466,7 +487,7 @@ public:
             } else if (var.type == "int") {
                 std::string temp_var_str = "%" + std::to_string(temp_var);
                 temp_var++;
-                out << "  " << temp_var_str << " = load " << "@" << l_val << std::endl;
+                out << "  " << temp_var_str << " = load " << var.koopa_var_name << std::endl;
                 ret_str = temp_var_str;
             } else {
                 std::string error_info = "PrimaryExpAST(DumpExp): unexpected lval type: ";
