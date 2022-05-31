@@ -232,9 +232,24 @@ public:
         func_type->Dump(out);
         out << " {" << std::endl;
 
-        std::string entry_name("entry");  // TODO: decide entry_name
+        std::string entry_name("entry");
         out << "%" << entry_name << ":" << std::endl;
+        if (type == FuncType::INT) {
+            out << "  %ret = alloc i32" << std::endl;
+        }
         block->Dump(out);
+
+        out << "%end:" << std::endl;
+        if (type == FuncType::INT) {
+            out << "  %" << temp_var << " = load %ret" << std::endl;
+        }
+        out << "  " << "ret";
+        if (type == FuncType::INT) {
+            out << " ";
+            out << "%" << temp_var;
+            temp_var++;
+        }
+        out << std::endl;
         out << "}";
 
         scope.exit_func();
@@ -325,6 +340,7 @@ enum class StmtType {
     ASSIGN,
     EXP,
     BLOCK,
+    IF,  // No distinguishing IF or IFELSE. To tell from the else_stmt.
     RET_EXP
 };
 
@@ -334,14 +350,16 @@ public:
     std::string l_val;
     std::unique_ptr<BaseAST> block;
     StmtType type;
+    std::unique_ptr<BaseAST> true_stmt;
+    std::unique_ptr<BaseAST> else_stmt;
     void Dump(std::ostream& out) const override {
         if (type == StmtType::ASSIGN) {
             assert(!l_val.empty());
-            std::string temp_var = exp->DumpExp(out);
+            std::string temp_var_str = exp->DumpExp(out);
             // store
             // Find the koopa var name according to l_val
             std::string koopa_var_name = scope.get_var_by_ident(l_val).koopa_var_name;
-            out << "  store " << temp_var << ", " << koopa_var_name << std::endl;
+            out << "  store " << temp_var_str << ", " << koopa_var_name << std::endl;
         } else if (type == StmtType::EXP) {
             // Stmt ::= [Exp] ";"
             if (exp != nullptr) {
@@ -352,14 +370,53 @@ public:
             scope.push_scope();
             block->Dump(out);
             scope.pop_scope();
+        } else if (type == StmtType::IF) {
+            std::string temp_var_str = exp->DumpExp(out);
+            std::string true_block_name = "%" + scope.current_func_ptr->get_koopa_var_name("true_block");
+            std::string end_if_block_name = "%" + scope.current_func_ptr->get_koopa_var_name("end_if");
+
+            if (else_stmt != nullptr) {
+                // Stmt ::= "if" "(" Exp ")" Stmt "else" Stmt
+                std::string else_block_name = "%" + scope.current_func_ptr->get_koopa_var_name("else_block");
+
+                out << "  br " << temp_var_str << ", " << true_block_name << ", " << else_block_name << std::endl;
+                out << std::endl;
+
+                out << true_block_name << ":" << std::endl;
+                scope.push_scope();
+                true_stmt->Dump(out);
+                scope.pop_scope();
+                out << "  jump " << end_if_block_name << std::endl;
+                out << std::endl;
+
+                out << else_block_name << ":" << std::endl;
+                scope.push_scope();
+                else_stmt->Dump(out);
+                scope.pop_scope();
+                out << "  jump " << end_if_block_name << std::endl;
+                out << std::endl;
+            } else {
+                // Stmt ::= "if" "(" Exp ")" Stmt
+                out << "  br " << temp_var_str << ", " << true_block_name << ", " << end_if_block_name << std::endl;
+                out << std::endl;
+
+                out << true_block_name << ":" << std::endl;
+                scope.push_scope();
+                true_stmt->Dump(out);
+                scope.pop_scope();
+                out << "  jump " << end_if_block_name << std::endl;
+                out << std::endl;
+            }
+            // end_if_block
+            out << end_if_block_name << ":" << std::endl;
         } else if (type == StmtType::RET_EXP) {
             // Stmt ::= "return" [Exp] ";"
-            std::string temp_var = exp->DumpExp(out);
-            out << "  " << "ret";
+            std::string temp_var_str;
             if (exp != nullptr) {
-                out << " ";
-                out << temp_var;
+                temp_var_str = exp->DumpExp(out);
+                out << "  store " << temp_var_str << ", %ret" << std::endl;
             }
+            out << "  jump %end" << std::endl;
             out << std::endl;
         } else {
             throw std::invalid_argument("StmtAST: both members are empty!");
@@ -376,8 +433,8 @@ public:
     std::unique_ptr<BaseAST> l_or_exp;
     void Dump(std::ostream& out) const override { }
     std::string DumpExp(std::ostream& out) const override {
-        std::string temp_var = l_or_exp->DumpExp(out);
-        return temp_var;
+        std::string temp_var_str = l_or_exp->DumpExp(out);
+        return temp_var_str;
     }
     std::string ComputeConstVal(std::ostream& out) const override {
         return l_or_exp->ComputeConstVal(out);

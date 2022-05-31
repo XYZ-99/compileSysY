@@ -38,6 +38,8 @@ using namespace std;
 %right '='
 %left '+' '-'
 %left '*' '/'
+%nonassoc IF
+%nonassoc ELSE
 
 // 非终结符的类型定义
 %type <ast_val> FuncDef FuncType Decl ConstDecl ConstDef ConstDefList ConstInitVal VarDecl VarDefList VarDef
@@ -218,7 +220,11 @@ LVal
   }
   ;
 
-
+// https://docs.oracle.com/cd/E19504-01/802-5880/6i9k05dh3/index.html
+// yacc **shifts** by default in a shift-reduce conflict.
+// https://docs.oracle.com/cd/E19504-01/802-5880/6i9k05dh2/index.html
+// 1. In a shift-reduce conflict, the default is to shift.
+// 2. In a reduce-reduce conflict, the default is to reduce by the earlier grammar rule (in the yacc specification).
 Stmt
   : LVal '=' Exp ';' {
     auto ast = new StmtAST();
@@ -242,6 +248,21 @@ Stmt
     auto ast = new StmtAST();
     ast->block = unique_ptr<BaseAST>($1);
     ast->type = StmtType::BLOCK;
+    $$ = ast;
+  }
+  | IF '(' Exp ')' Stmt ELSE Stmt {
+    auto ast = new StmtAST();
+    ast->exp = unique_ptr<BaseAST>($3);
+    ast->type = StmtType::IF;
+    ast->true_stmt = unique_ptr<BaseAST>($5);
+    ast->else_stmt = unique_ptr<BaseAST>($7);
+    $$ = ast;
+  }
+  | IF '(' Exp ')' Stmt {
+    auto ast = new StmtAST();
+    ast->exp = unique_ptr<BaseAST>($3);
+    ast->type = StmtType::IF;
+    ast->true_stmt = unique_ptr<BaseAST>($5);
     $$ = ast;
   }
   | RETURN Exp ';' {

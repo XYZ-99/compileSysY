@@ -52,6 +52,9 @@ LexOrOp       "||"
 "return"        { return RETURN; }
 "const"         { return CONST; }
 
+"if"            { return IF; }
+"else"          { return ELSE; }
+
 {Identifier}    { yylval.str_val = new string(yytext); return IDENT; }
 
 {Decimal}       { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
