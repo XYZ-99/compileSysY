@@ -30,7 +30,7 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN CONST
+%token INT RETURN CONST WHILE
 %token <str_val> IDENT REL_OP EQUAL_OP AND_OP OR_OP
 %token <int_val> INT_CONST
 
@@ -263,6 +263,13 @@ Stmt
     ast->exp = unique_ptr<BaseAST>($3);
     ast->type = StmtType::IF;
     ast->true_stmt = unique_ptr<BaseAST>($5);
+    $$ = ast;
+  }
+  | WHILE '(' Exp ')' Stmt {
+    auto ast = new StmtAST();
+    ast->exp = unique_ptr<BaseAST>($3);
+    ast->type = StmtType::WHILE;
+    ast->body_stmt = unique_ptr<BaseAST>($5);
     $$ = ast;
   }
   | RETURN Exp ';' {

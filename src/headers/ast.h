@@ -344,6 +344,7 @@ enum class StmtType {
     EXP,
     BLOCK,
     IF,  // No distinguishing IF or IFELSE. To tell from the else_stmt.
+    WHILE,
     RET_EXP
 };
 
@@ -355,6 +356,7 @@ public:
     StmtType type;
     std::unique_ptr<BaseAST> true_stmt;
     std::unique_ptr<BaseAST> else_stmt;
+    std::unique_ptr<BaseAST> body_stmt;
     void Dump(std::ostream& out) const override {
         if (type == StmtType::ASSIGN) {
             assert(!l_val.empty());
@@ -412,6 +414,28 @@ public:
             }
             // end_if_block
             out << end_if_block_name << ":" << std::endl;
+        } else if (type == StmtType::WHILE) {
+            // Stmt ::= "while" "(" Exp ")" Stmt
+            std::string while_entry_name = scope.current_func_ptr->get_koopa_var_name("%while_entry");
+            std::string while_body_name = scope.current_func_ptr->get_koopa_var_name("%while_body");
+            std::string after_while_name = scope.current_func_ptr->get_koopa_var_name("%basic_block");
+            out << "  jump " << while_entry_name << std::endl;
+            out << std::endl;
+
+            out << while_entry_name << ":" << std::endl;
+            std::string temp_var_str = exp->DumpExp(out);
+            out << "  br " << temp_var_str << ", " << while_body_name << ", " << after_while_name << std::endl;
+            out << std::endl;
+
+            out << while_body_name << ":" << std::endl;
+            scope.push_scope();
+            body_stmt->Dump(out);
+            scope.pop_scope();
+
+            out << "  jump " << while_entry_name << std::endl;
+            out << std::endl;
+
+            out << after_while_name << ":" << std::endl;
         } else if (type == StmtType::RET_EXP) {
             // Stmt ::= "return" [Exp] ";"
             std::string temp_var_str;
@@ -422,7 +446,7 @@ public:
             out << "  jump %end" << std::endl;
             out << std::endl;
 
-            std::string temp_block_name = "%" + scope.current_func_ptr->get_koopa_var_name("basic_block");
+            std::string temp_block_name = scope.current_func_ptr->get_koopa_var_name("%basic_block");
             out << temp_block_name << ":" << std::endl;
         } else {
             throw std::invalid_argument("StmtAST: both members are empty!");
