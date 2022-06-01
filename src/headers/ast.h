@@ -21,8 +21,10 @@
 class BaseAST {
 public:
     virtual ~BaseAST() = default;
-    virtual void Dump(std::ostream& out = std::cout) const = 0;
-    virtual std::string DumpExp(std::ostream& out = std::cout) const {
+    virtual void Dump(std::ostream& out = std::cout) const {
+        throw std::invalid_argument("Used BaseAST Dump!");
+    }
+    virtual Operand DumpExp() const {
         throw std::invalid_argument("Used BaseAST DumpExp!");
     }
     virtual void InsertSymbol(std::string btype, std::ostream& out = std::cout) const = 0;
@@ -30,8 +32,11 @@ public:
     virtual FuncType GetFuncTypeEnum() const {
         throw std::invalid_argument("Used BaseAST GetFuncTypeEnum!");
     }
-    virtual std::string ComputeInitVal(std::ostream& out = std::cout) const {
+    virtual Operand ComputeInitVal() const {
         throw std::invalid_argument("Used BaseAST ComputeInitVal!");
+    }
+    virtual void DumpInstructions() const {
+        throw std::invalid_argument("Used BaseAST DumpInstructions!");
     }
     inline static int temp_var = 0;  // TODO: search temp_var
     static Scope scope;
@@ -174,21 +179,20 @@ public:
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         // e.g. @x = alloc i32
         std::string koopa_var_name = "@" + scope.current_func_ptr->get_koopa_var_name(ident);
-        out << "  " << koopa_var_name << " = alloc ";
-        if (btype == "int") {
-            out << "i32" << std::endl;
-        } else {
-            std::string error_info = "VarDefAST: unexpected BType: ";
-            error_info = error_info + btype;
-            throw std::invalid_argument(error_info);
-        }
+        Operand alloc_op = Operand(koopa_var_name);
+        scope.current_func_ptr->append_alloc_to_entry_block(alloc_op);
+
         auto new_var = Variable(btype, koopa_var_name);
         scope.insert_var(ident, new_var);
 
         // e.g. store 10, @x
         if (init_val != nullptr) {
-            std::string computed_init_val = init_val->ComputeInitVal(out);
-            out << "  " << "store " << computed_init_val << ", " << koopa_var_name << std::endl;
+            Operand computed_init_val = init_val->ComputeInitVal();
+            Operand store_koopa_var = Operand(koopa_var_name);
+            auto instr = std::make_unique<Instruction>(OpType::STORE,
+                                                       computed_init_val,
+                                                       store_koopa_var);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
         }
     }
     std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
@@ -200,8 +204,8 @@ public:
     void Dump(std::ostream& out) const override { }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
-    std::string ComputeInitVal(std::ostream& out) const override {
-        return exp->DumpExp(out);
+    Operand ComputeInitVal() const override {
+        return exp->DumpExp();
     }
 };
 
@@ -223,6 +227,40 @@ public:
     void Dump(std::ostream& out) const override {
         FuncType type = func_type->GetFuncTypeEnum();
         scope.enter_func(type, ident);
+        block->Dump(out);  // Will structurize the function, without output yet
+        std::string end_block_name = scope.current_func_ptr->end_block_ptr->basic_block_name;
+        Operand end_block_op = Operand(end_block_name, OperandType::BLOCK);
+        auto jump_ret_instr = std::make_unique<Instruction>(OpType::JUMP,
+                                                            end_block_op);
+        scope.current_func_ptr->end_current_block_by_instr(std::move(jump_ret_instr),
+                                                           false);
+        // add jump to the entry block
+        std::string first_block_name = scope.current_func_ptr->basic_block_ptrs[0]->basic_block_name;
+        Operand first_block_op = Operand(first_block_name, OperandType::BLOCK);
+        auto entry_jump_instr = std::make_unique<Instruction>(OpType::JUMP,
+                                                              first_block_op);
+        scope.current_func_ptr->entry_block_ptr->ending_instruction = std::move(entry_jump_instr);
+        // and ret instructions for the end block
+        if (type == FuncType::INT) {
+            std::string temp_var_str = "%" + std::to_string(temp_var++);
+            Operand temp_var_op = Operand(temp_var_str);
+            if (!scope.current_func_ptr->ret_var_op.has_value()) {
+                throw std::invalid_argument("Return type is INT but the ret_var_op does not hold a value!");
+            }
+            auto load_instr = std::make_unique<Instruction>(OpType::LOAD,
+                                                            temp_var_op,
+                                                            scope.current_func_ptr->ret_var_op.value());
+            scope.current_func_ptr->end_block_ptr->instruction_lists.push_back(std::move(load_instr));
+
+            auto ret_instr = std::make_unique<Instruction>(OpType::RET,
+                                                           temp_var_op);
+            scope.current_func_ptr->end_block_ptr->ending_instruction = std::move(ret_instr);
+        } else {
+            auto ret_instr = std::make_unique<Instruction>(OpType::RET);
+            scope.current_func_ptr->end_block_ptr->ending_instruction = std::move(ret_instr);
+        }
+
+        // Output
 
         out << "fun";
         out << " ";
@@ -235,27 +273,12 @@ public:
         func_type->Dump(out);
         out << " {" << std::endl;
 
-        std::string entry_name("entry");
-        out << "%" << entry_name << ":" << std::endl;
-        if (type == FuncType::INT) {
-            out << "  %ret = alloc i32" << std::endl;
+        out << *scope.current_func_ptr->entry_block_ptr << std::endl;
+        for (auto& block_ptr : scope.current_func_ptr->basic_block_ptrs) {
+            out << *block_ptr << std::endl;
         }
-        block->Dump(out);
+        out << *scope.current_func_ptr->end_block_ptr;
 
-        out << "  jump %end" << std::endl;
-        out << std::endl;
-
-        out << "%end:" << std::endl;
-        if (type == FuncType::INT) {
-            out << "  %" << temp_var << " = load %ret" << std::endl;
-        }
-        out << "  " << "ret";
-        if (type == FuncType::INT) {
-            out << " ";
-            out << "%" << temp_var;
-            temp_var++;
-        }
-        out << std::endl;
         out << "}";
 
         scope.exit_func();
@@ -319,7 +342,7 @@ public:
             decl->Dump(out);
         } else if (stmt != nullptr) {
             // BlockItem ::= Stmt
-            stmt->Dump(out);
+            stmt->DumpInstructions();
         } else {
             throw std::invalid_argument("BlockItemAST: both decl and stmt are nullptr!");
         }
@@ -362,116 +385,161 @@ public:
     std::unique_ptr<BaseAST> true_stmt;
     std::unique_ptr<BaseAST> else_stmt;
     std::unique_ptr<BaseAST> body_stmt;
-    void Dump(std::ostream& out) const override {
+    void DumpInstructions() const override {
         if (type == StmtType::ASSIGN) {
             assert(!l_val.empty());
-            std::string temp_var_str = exp->DumpExp(out);
+
+            Operand temp_var_op = exp->DumpExp();
             // store
             // Find the koopa var name according to l_val
             std::string koopa_var_name = scope.get_var_by_ident(l_val).koopa_var_name;
-            out << "  store " << temp_var_str << ", " << koopa_var_name << std::endl;
+            Operand store_target = Operand(koopa_var_name);
+            auto instr = std::make_unique<Instruction>(OpType::STORE,
+                                                       temp_var_op,
+                                                       store_target);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
         } else if (type == StmtType::EXP) {
             // Stmt ::= [Exp] ";"
             if (exp != nullptr) {
-                exp->DumpExp(out);
+                exp->DumpExp();
             }
         } else if (type == StmtType::BLOCK) {
             // Stmt ::= Block
             scope.push_scope();
-            block->Dump(out);
+            block->Dump();
             scope.pop_scope();
         } else if (type == StmtType::IF) {
-            std::string temp_var_str = exp->DumpExp(out);
-            std::string true_block_name = "%" + scope.current_func_ptr->get_koopa_var_name("true_block");
-            std::string end_if_block_name = "%" + scope.current_func_ptr->get_koopa_var_name("end_if");
+            Operand temp_var_op = exp->DumpExp();
+            std::string true_block_name = scope.current_func_ptr->get_koopa_var_name("%true_block");
+            Operand true_block_op = Operand(true_block_name, OperandType::BLOCK);
+            std::string end_if_block_name = scope.current_func_ptr->get_koopa_var_name("%end_if");
+            Operand end_if_block_op = Operand(end_if_block_name, OperandType::BLOCK);
 
             if (else_stmt != nullptr) {
                 // Stmt ::= "if" "(" Exp ")" Stmt "else" Stmt
-                std::string else_block_name = "%" + scope.current_func_ptr->get_koopa_var_name("else_block");
+                std::string else_block_name = scope.current_func_ptr->get_koopa_var_name("%else_block");
+                Operand else_block_op = Operand(else_block_name, OperandType::BLOCK);
 
-                out << "  br " << temp_var_str << ", " << true_block_name << ", " << else_block_name << std::endl;
-                out << std::endl;
+                auto br_instr = std::make_unique<Instruction>(OpType::BR,
+                                                           temp_var_op,
+                                                           true_block_op,
+                                                           else_block_op);
+                scope.current_func_ptr->end_current_block_by_instr(std::move(br_instr),
+                                                                   true,
+                                                                   true_block_name);
 
-                out << true_block_name << ":" << std::endl;
                 scope.push_scope();
-                true_stmt->Dump(out);
+                true_stmt->DumpInstructions();
                 scope.pop_scope();
-                out << "  jump " << end_if_block_name << std::endl;
-                out << std::endl;
+                auto jump_instr = std::make_unique<Instruction>(OpType::JUMP,
+                                                           end_if_block_op);
+                scope.current_func_ptr->end_current_block_by_instr(std::move(jump_instr),
+                                                                   true,
+                                                                   else_block_name);
 
-                out << else_block_name << ":" << std::endl;
                 scope.push_scope();
-                else_stmt->Dump(out);
+                else_stmt->DumpInstructions();
                 scope.pop_scope();
-                out << "  jump " << end_if_block_name << std::endl;
-                out << std::endl;
+                auto jump_to_end_if_instr = std::make_unique<Instruction>(OpType::JUMP,
+                                                           end_if_block_op);
+                scope.current_func_ptr->end_current_block_by_instr(std::move(jump_to_end_if_instr),
+                                                                   true,
+                                                                   end_if_block_name);
             } else {
                 // Stmt ::= "if" "(" Exp ")" Stmt
-                out << "  br " << temp_var_str << ", " << true_block_name << ", " << end_if_block_name << std::endl;
-                out << std::endl;
+                auto br_instr = std::make_unique<Instruction>(OpType::BR,
+                                                           temp_var_op,
+                                                           true_block_op,
+                                                           end_if_block_op);
+                scope.current_func_ptr->end_current_block_by_instr(std::move(br_instr),
+                                                                   true,
+                                                                   true_block_name);
 
-                out << true_block_name << ":" << std::endl;
                 scope.push_scope();
-                true_stmt->Dump(out);
+                true_stmt->DumpInstructions();
                 scope.pop_scope();
-                out << "  jump " << end_if_block_name << std::endl;
-                out << std::endl;
+                auto jump_instr = std::make_unique<Instruction>(OpType::JUMP,
+                                                           end_if_block_op);
+                scope.current_func_ptr->end_current_block_by_instr(std::move(jump_instr),
+                                                                   true,
+                                                                   end_if_block_name);
             }
-            // end_if_block
-            out << end_if_block_name << ":" << std::endl;
         } else if (type == StmtType::WHILE) {
             // Stmt ::= "while" "(" Exp ")" Stmt
             std::string while_entry_name = scope.current_func_ptr->get_koopa_var_name(WHILE_ENTRY_BASENAME);
             std::string while_body_name = scope.current_func_ptr->get_koopa_var_name(WHILE_BODY_BASENAME);
             std::string after_while_name = scope.current_func_ptr->get_koopa_var_name(END_WHILE_BASENAME);
-            out << "  jump " << while_entry_name << std::endl;
-            out << std::endl;
 
-            out << while_entry_name << ":" << std::endl;
-            std::string temp_var_str = exp->DumpExp(out);
-            out << "  br " << temp_var_str << ", " << while_body_name << ", " << after_while_name << std::endl;
-            out << std::endl;
+            Operand while_entry_op = Operand(while_entry_name, OperandType::BLOCK);
+            Operand while_body_op = Operand(while_body_name, OperandType::BLOCK);
+            Operand after_while_op = Operand(after_while_name, OperandType::BLOCK);
+            auto jump_to_entry_instr = std::make_unique<Instruction>(OpType::JUMP,
+                                                            while_entry_op);
+            scope.current_func_ptr->end_current_block_by_instr(std::move(jump_to_entry_instr),
+                                                               true,
+                                                               while_entry_name);
 
-            out << while_body_name << ":" << std::endl;
+            Operand exp_res_op = exp->DumpExp();
+            auto br_instr = std::make_unique<Instruction>(OpType::BR,
+                                                          exp_res_op,
+                                                          while_body_op,
+                                                          after_while_op);
+            scope.current_func_ptr->end_current_block_by_instr(std::move(br_instr),
+                                                               true,
+                                                               while_body_name);
+
             auto loop_info = std::make_pair(while_entry_name, after_while_name);
             scope.push_scope();
             scope.current_func_ptr->enter_loop(loop_info);
-            body_stmt->Dump(out);
+            body_stmt->Dump();
             scope.current_func_ptr->exit_loop();
             scope.pop_scope();
 
-            out << "  jump " << while_entry_name << std::endl;
-            out << std::endl;
-
-            out << after_while_name << ":" << std::endl;
+            auto jump_to_entry_instr_copy = std::make_unique<Instruction>(OpType::JUMP,
+                                                            while_entry_op);
+            scope.current_func_ptr->end_current_block_by_instr(std::move(jump_to_entry_instr_copy),
+                                                               true,
+                                                               after_while_name);
         } else if (type == StmtType::BREAK) {
             // jump end_while
             std::string end_while_name_of_this_loop = scope.current_func_ptr->get_current_loop_info().second;
-            out << "  jump " << end_while_name_of_this_loop << std::endl;
-            out << std::endl;
-
+            Operand end_while_op = Operand(end_while_name_of_this_loop, OperandType::BLOCK);
+            auto jump_instr = std::make_unique<Instruction>(OpType::JUMP,
+                                                            end_while_op);
             std::string new_while_body_name = scope.current_func_ptr->get_koopa_var_name(WHILE_BODY_BASENAME);
-            out << new_while_body_name << ":" << std::endl;
+            scope.current_func_ptr->end_current_block_by_instr(std::move(jump_instr),
+                                                               true,
+                                                               new_while_body_name);
         } else if (type == StmtType::CONTINUE) {
             // jump while_entry
             std::string while_entry_name_of_this_loop = scope.current_func_ptr->get_current_loop_info().first;
-            out << "  jump " << while_entry_name_of_this_loop << std::endl;
-            out << std::endl;
-
+            Operand while_entry_op = Operand(while_entry_name_of_this_loop, OperandType::BLOCK);
+            auto jump_instr = std::make_unique<Instruction>(OpType::JUMP,
+                                                            while_entry_op);
             std::string new_while_body_name = scope.current_func_ptr->get_koopa_var_name(WHILE_BODY_BASENAME);
-            out << new_while_body_name << ":" << std::endl;
+            scope.current_func_ptr->end_current_block_by_instr(std::move(jump_instr),
+                                                               true,
+                                                               new_while_body_name);
         } else if (type == StmtType::RET_EXP) {
             // Stmt ::= "return" [Exp] ";"
-            std::string temp_var_str;
+            Operand exp_res;
+            Operand ret_reg;
             if (exp != nullptr) {
-                temp_var_str = exp->DumpExp(out);
-                out << "  store " << temp_var_str << ", %ret" << std::endl;
+                exp_res = exp->DumpExp();
+                ret_reg = scope.current_func_ptr->ret_var_op.value();
+                auto store_ins = std::make_unique<Instruction>(OpType::STORE,
+                                                               exp_res,
+                                                               ret_reg);
+                scope.current_func_ptr->append_instr_to_current_block(std::move(store_ins));
             }
-            out << "  jump %end" << std::endl;
-            out << std::endl;
-
+            std::string end_block_name = scope.current_func_ptr->end_block_ptr->basic_block_name;
+            Operand end_block_op = Operand(end_block_name, OperandType::BLOCK);
+            auto jump_ins = std::make_unique<Instruction>(OpType::JUMP,
+                                                          end_block_op);
             std::string temp_block_name = scope.current_func_ptr->get_koopa_var_name("%after_ret");
-            out << temp_block_name << ":" << std::endl;
+            scope.current_func_ptr->end_current_block_by_instr(std::move(jump_ins),
+                                                               true,
+                                                               temp_block_name);
         } else {
             throw std::invalid_argument("StmtAST: both members are empty!");
         }
@@ -486,9 +554,9 @@ class ExpAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> l_or_exp;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(std::ostream& out) const override {
-        std::string temp_var_str = l_or_exp->DumpExp(out);
-        return temp_var_str;
+    Operand DumpExp() const override {
+        Operand temp_var_op = l_or_exp->DumpExp();
+        return temp_var_op;
     }
     std::string ComputeConstVal(std::ostream& out) const override {
         return l_or_exp->ComputeConstVal(out);
@@ -510,29 +578,36 @@ public:
     std::unique_ptr<BaseAST> unary_exp;
     unary_op_t unary_op;  // since once unary_exp is not nullptr, it must have been assigned
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(std::ostream& out) const override {
-        std::string ret_str;
+    Operand DumpExp() const override {
+        Operand ret_op;
+        Operand zero = Operand(0);
         if (primary_exp != nullptr) {
-            ret_str = primary_exp->DumpExp(out);
+            ret_op = primary_exp->DumpExp();
         } else if (unary_exp != nullptr) {
-            ret_str = unary_exp->DumpExp(out);
+            Operand unary_res = unary_exp->DumpExp();
             switch (unary_op) {
                 case UNARY_PLUS:
-                    // Do nothing
+                    ret_op = unary_res;
                     break;
                 case UNARY_MINUS: {
-                    out << "  %" << temp_var << " = sub 0, " << ret_str << std::endl;
-                    std::ostringstream ret_stream;
-                    ret_stream << "%" << temp_var;
-                    ret_str = ret_stream.str();
+                    ret_op = Operand("%" + std::to_string(temp_var));
+
+                    auto instr = std::make_unique<Instruction>(OpType::SUB,
+                                                               ret_op,
+                                                               zero,
+                                                               unary_res);
+                    scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
                     temp_var++;
                     break;
                 }
                 case UNARY_NEG: {
-                    out << "  %" << temp_var << " = eq " << ret_str << ", 0" << std::endl;
-                    std::ostringstream ret_stream;
-                    ret_stream << "%" << temp_var;
-                    ret_str = ret_stream.str();
+                    ret_op = Operand("%" + std::to_string(temp_var));
+
+                    auto instr = std::make_unique<Instruction>(OpType::EQ,
+                                                               ret_op,
+                                                               unary_res,
+                                                               zero);
+                    scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
                     temp_var++;
                     break;
                 }
@@ -542,7 +617,7 @@ public:
         } else {
             throw std::invalid_argument("primary_exp and unary_exp are both nullptr!");
         }
-        return ret_str;
+        return ret_op;
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
@@ -586,31 +661,34 @@ public:
     std::string l_val;
     // Notes: PrimaryExp ::= "(" Exp ")" | LVal | Number;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(std::ostream& out) const override {
-        std::string ret_str;
+    Operand DumpExp() const override {
+        Operand ret_op;
         if (exp != nullptr) {
-            ret_str = exp->DumpExp(out);
+            ret_op = exp->DumpExp();
         } else if (!l_val.empty()) {
             const Variable& var = scope.get_var_by_ident(l_val);
             if (var.type == "const int") {
                 assert(var.const_val);  // the const_val must have been computed
-                ret_str = std::to_string(var.const_val.value());
+                ret_op = Operand(var.const_val.value());
             } else if (var.type == "int") {
                 std::string temp_var_str = "%" + std::to_string(temp_var);
+                ret_op = Operand(temp_var_str);
                 temp_var++;
-                out << "  " << temp_var_str << " = load " << var.koopa_var_name << std::endl;
-                ret_str = temp_var_str;
+                auto instr = std::make_unique<Instruction>(OpType::LOAD,
+                                                           ret_op,
+                                                           Operand(var.koopa_var_name));
+                scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
             } else {
                 std::string error_info = "PrimaryExpAST(DumpExp): unexpected lval type: ";
                 error_info = error_info + var.type;
                 throw std::invalid_argument(error_info);
             }
         } else if (number != nullptr) {
-            ret_str = std::to_string(*number);
+            ret_op = Operand(*number);
         } else {
             throw std::invalid_argument("exp and number are both nullptr!");
         }
-        return ret_str;
+        return ret_op;
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
@@ -643,34 +721,38 @@ public:
     std::unique_ptr<BaseAST> mul_exp;
     std::string op;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(std::ostream& out) const override {
+    Operand DumpExp() const override {
         if (!op.empty()) {
             // MulExp ::= MulExp ("*" | "/" | "%") UnaryExp;
-            std::string lhs_name = mul_exp->DumpExp(out);
-            std::string rhs_name = unary_exp->DumpExp(out);
+            Operand lhs = mul_exp->DumpExp();
+            Operand rhs = unary_exp->DumpExp();
 
             std::string temp_var_str = "%" + std::to_string(temp_var);
-
-            out << "  " << temp_var_str << " = ";
+            Operand res = Operand(temp_var_str);
+            OpType type;
             if (op == "*") {
-                out << "mul";
+                type = OpType::MUL;
             } else if (op == "/") {
-                out << "div";
+                type = OpType::DIV;
             } else if (op == "%") {
-                out << "mod";
+                type = OpType::MOD;
             } else {
                 std::cout << "------ Error Information ------" << std::endl;
                 std::cout << "In MulExpAST: invalid op: " << op << std::endl;
                 throw std::invalid_argument("invalid argument");
             }
-            out << " " << lhs_name << ", " << rhs_name << std::endl;
+            auto instr = std::make_unique<Instruction>(type,
+                                                       res,
+                                                       lhs,
+                                                       rhs);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
 
             temp_var++;
-            return temp_var_str;
+            return res;
         } else {
             // MulExp ::= UnaryExp;
-            std::string var_name = unary_exp->DumpExp(out);
-            return var_name;
+            Operand var_op = unary_exp->DumpExp();
+            return var_op;
         }
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
@@ -711,32 +793,36 @@ public:
     std::unique_ptr<BaseAST> mul_exp;
     std::string op;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(std::ostream& out) const override {
+    Operand DumpExp() const override {
         if (!op.empty()) {
             // AddExp ::= AddExp ("+" | "-") MulExp;
-            std::string lhs_name = add_exp->DumpExp(out);
-            std::string rhs_name = mul_exp->DumpExp(out);
+            Operand lhs = add_exp->DumpExp();
+            Operand rhs = mul_exp->DumpExp();
 
             std::string temp_var_str = "%" + std::to_string(temp_var);
-
-            out << "  " << temp_var_str << " = ";
+            Operand res = Operand(temp_var_str);
+            OpType type;
             if (op == "+") {
-                out << "add";
+                type = OpType::ADD;
             } else if (op == "-") {
-                out << "sub";
+                type = OpType::SUB;
             } else {
                 std::cout << "------ Error Information ------" << std::endl;
                 std::cout << "In AddExpAST: invalid op: " << op << std::endl;
                 throw std::invalid_argument("invalid argument");
             }
-            out << " " << lhs_name << ", " << rhs_name << std::endl;
+            auto instr = std::make_unique<Instruction>(type,
+                                                       res,
+                                                       lhs,
+                                                       rhs);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
 
             temp_var++;
             return temp_var_str;
         } else {
             // AddExp ::= MulExp;
-            std::string var_name = mul_exp->DumpExp(out);
-            return var_name;
+            Operand var_op = mul_exp->DumpExp();
+            return var_op;
         }
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
@@ -775,36 +861,40 @@ public:
     std::unique_ptr<BaseAST> rel_exp;
     std::string rel_op;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(std::ostream& out) const override {
+    Operand DumpExp() const override {
         if (!rel_op.empty()) {
             // RelExp ::= RelExp ("<" | ">" | "<=" | ">=") AddExp;
-            std::string lhs_name = rel_exp->DumpExp(out);
-            std::string rhs_name = add_exp->DumpExp(out);
+            Operand lhs = rel_exp->DumpExp();
+            Operand rhs = add_exp->DumpExp();
 
             std::string temp_var_str = "%" + std::to_string(temp_var);
-
-            out << "  " << temp_var_str << " = ";
+            Operand res = Operand(temp_var_str);
+            OpType type;
             if (rel_op == ">") {
-                out << "gt";
+                type = OpType::GT;
             } else if (rel_op == "<") {
-                out << "lt";
+                type = OpType::LT;
             } else if (rel_op == ">=") {
-                out << "ge";
+                type = OpType::GE;
             } else if (rel_op == "<=") {
-                out << "le";
+                type = OpType::LE;
             } else {
                 std::cout << "------ Error Information ------" << std::endl;
                 std::cout << "In RelExpAST: invalid rel_op: " << rel_op << std::endl;
                 throw std::invalid_argument("invalid argument");
             }
-            out << " " << lhs_name << ", " << rhs_name << std::endl;
+            auto instr = std::make_unique<Instruction>(type,
+                                                       res,
+                                                       lhs,
+                                                       rhs);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
 
             temp_var++;
-            return temp_var_str;
+            return res;
         } else {
             // RelExp ::= AddExp;
-            std::string var_name = add_exp->DumpExp(out);
-            return var_name;
+            Operand var_op = add_exp->DumpExp();
+            return var_op;
         }
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
@@ -847,32 +937,36 @@ public:
     std::unique_ptr<BaseAST> eq_exp;
     std::string eq_op;
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(std::ostream& out) const override {
+    Operand DumpExp() const override {
         if (eq_exp != nullptr) {
             // EqExp ::= EqExp ("==" | "!=") RelExp;
-            std::string lhs_name = eq_exp->DumpExp(out);
-            std::string rhs_name = rel_exp->DumpExp(out);
+            Operand lhs = eq_exp->DumpExp();
+            Operand rhs = rel_exp->DumpExp();
 
             std::string temp_var_str = "%" + std::to_string(temp_var);
-
-            out << "  " << temp_var_str << " = ";
+            Operand res = Operand(temp_var_str);
+            OpType type;
             if (eq_op == "==") {
-                out << "eq";
+                type = OpType::EQ;
             } else if (eq_op == "!=") {
-                out << "ne";
+                type = OpType::NE;
             } else {
                 std::cout << "------ Error Information ------" << std::endl;
                 std::cout << "In EqExpAST: invalid eq_op: " << eq_op << std::endl;
                 throw std::invalid_argument("invalid argument");
             }
-            out << " " << lhs_name << ", " << rhs_name << std::endl;
+            auto instr = std::make_unique<Instruction>(type,
+                                                       res,
+                                                       lhs,
+                                                       rhs);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
 
             temp_var++;
-            return temp_var_str;
+            return res;
         } else {
             // EqExp ::= RelExp;
-            std::string var_name = rel_exp->DumpExp(out);
-            return var_name;
+            Operand var_op = rel_exp->DumpExp();
+            return var_op;
         }
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
@@ -911,27 +1005,45 @@ public:
     std::unique_ptr<BaseAST> l_and_exp;
     // we do not need an and_op since there is only one choice.
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(std::ostream& out) const override {
+    Operand DumpExp() const override {
         if (l_and_exp != nullptr) {
             // LAndExp ::= LAndExp "&&" EqExp;
-            std::string lhs_name = l_and_exp->DumpExp(out);
-            std::string rhs_name = eq_exp->DumpExp(out);
+            Operand lhs = l_and_exp->DumpExp();
+            Operand rhs = eq_exp->DumpExp();
 
             // snez t0, t0
             // snez t1, t1
             // and  t0, t0, t1
-            std::string temp_var_lhs = "%" + std::to_string(temp_var++);
-            out << "  " << temp_var_lhs << " = " << "ne " << lhs_name << ", 0" << std::endl;
-            std::string temp_var_rhs = "%" + std::to_string(temp_var++);
-            out << "  " << temp_var_rhs << " = " << "ne " << rhs_name << ", 0" << std::endl;
-            std::string temp_var_str = "%" + std::to_string(temp_var++);
-            out << "  " << temp_var_str << " = " << "and " << temp_var_lhs << ", " << temp_var_rhs << std::endl;
+            std::string temp_var_lhs_str = "%" + std::to_string(temp_var++);
+            Operand temp_var_lhs = Operand(temp_var_lhs_str);
+            Operand zero = Operand(0);
+            auto instr0 = std::make_unique<Instruction>(OpType::NE,
+                                                        temp_var_lhs,
+                                                        lhs,
+                                                        zero);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(instr0));
 
-            return temp_var_str;
+            std::string temp_var_rhs_str = "%" + std::to_string(temp_var++);
+            Operand temp_var_rhs = Operand(temp_var_rhs_str);
+            auto instr1 = std::make_unique<Instruction>(OpType::NE,
+                                                        temp_var_rhs,
+                                                        rhs,
+                                                        zero);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(instr1));
+
+            std::string temp_var_str = "%" + std::to_string(temp_var++);
+            Operand res = Operand(temp_var_str);
+            auto instr2 = std::make_unique<Instruction>(OpType::AND,
+                                                        res,
+                                                        temp_var_lhs,
+                                                        temp_var_rhs);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(instr2));
+
+            return res;
         } else {
             // LAndExp ::= EqExp
-            std::string var_name = eq_exp->DumpExp(out);
-            return var_name;
+            Operand var_op = eq_exp->DumpExp();
+            return var_op;
         }
     }
     void InsertSymbol(std::string btype, std::ostream& out) const override { }
@@ -959,25 +1071,37 @@ public:
     std::unique_ptr<BaseAST> l_or_exp;
     // we do not need an or_op since there is only one choice.
     void Dump(std::ostream& out) const override { }
-    std::string DumpExp(std::ostream& out) const override {
+    Operand DumpExp() const override {
         if (l_or_exp != nullptr) {
             // LOrExp ::= LOrExp "||" LAndExp;
-            std::string lhs_name = l_or_exp->DumpExp(out);
-            std::string rhs_name = l_and_exp->DumpExp(out);
+            Operand lhs = l_or_exp->DumpExp();
+            Operand rhs = l_and_exp->DumpExp();
 
             // or t0, t0, t1
             // snez t0, t0
             std::string temp_var_middle = "%" + std::to_string(temp_var++);
-            out << "  " << temp_var_middle << " = " << "or " << lhs_name << ", " << rhs_name << std::endl;
+            Operand temp_middle = Operand(temp_var_middle);
+            auto instr_0 = std::make_unique<Instruction>(OpType::OR,
+                                                         temp_middle,
+                                                         lhs,
+                                                         rhs);
+
+            scope.current_func_ptr->append_instr_to_current_block(std::move(instr_0));
 
             std::string temp_var_str = "%" + std::to_string(temp_var++);
-            out << "  " << temp_var_str << " = " << "ne " << temp_var_middle << ", 0" << std::endl;
+            Operand res = Operand(temp_var_str);
+            Operand zero = Operand(0);
+            auto instr_1 = std::make_unique<Instruction>(OpType::NE,
+                                                         res,
+                                                         temp_middle,
+                                                         zero);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(instr_1));
 
-            return temp_var_str;
+            return res;
         } else {
             // LOrExp ::= LAndExp;
-            std::string var_name = l_and_exp->DumpExp(out);
-            return var_name;
+            Operand var_op = l_and_exp->DumpExp();
+            return var_op;
         }
     }
     std::string ComputeConstVal(std::ostream& out) const override {
