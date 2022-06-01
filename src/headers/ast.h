@@ -239,6 +239,9 @@ public:
         }
         block->Dump(out);
 
+        out << "  jump %end" << std::endl;
+        out << std::endl;
+
         out << "%end:" << std::endl;
         if (type == FuncType::INT) {
             out << "  %" << temp_var << " = load %ret" << std::endl;
@@ -418,6 +421,9 @@ public:
             }
             out << "  jump %end" << std::endl;
             out << std::endl;
+
+            std::string temp_block_name = "%" + scope.current_func_ptr->get_koopa_var_name("basic_block");
+            out << temp_block_name << ":" << std::endl;
         } else {
             throw std::invalid_argument("StmtAST: both members are empty!");
         }
