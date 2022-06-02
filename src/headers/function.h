@@ -38,6 +38,22 @@ public:
             return name + "_" + std::to_string(pair_it->second);
         }
     }
+
+    std::vector<std::pair<std::string, std::string> > loop_infos;
+    void enter_loop(std::pair<std::string, std::string> loop_info) {
+        loop_infos.push_back(loop_info);
+    }
+
+    void exit_loop() {
+        loop_infos.pop_back();
+    }
+
+    std::pair<std::string, std::string> get_current_loop_info() {
+        if (loop_infos.empty()) {
+            throw std::invalid_argument("Trying to access loop_info while there is none!");
+        }
+        return loop_infos.back();
+    }
 };
 
 #endif //COMPILER_FUNCTION_H

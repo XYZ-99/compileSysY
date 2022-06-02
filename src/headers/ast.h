@@ -13,6 +13,9 @@
 #include "variable.h"
 #include "function.h"
 
+#define WHILE_ENTRY_BASENAME    "%while_entry"
+#define WHILE_BODY_BASENAME     "%while_body"
+#define END_WHILE_BASENAME      "%end_while"
 
 // 所有 AST 的基类
 class BaseAST {
@@ -345,6 +348,8 @@ enum class StmtType {
     BLOCK,
     IF,  // No distinguishing IF or IFELSE. To tell from the else_stmt.
     WHILE,
+    BREAK,
+    CONTINUE,
     RET_EXP
 };
 
@@ -416,9 +421,9 @@ public:
             out << end_if_block_name << ":" << std::endl;
         } else if (type == StmtType::WHILE) {
             // Stmt ::= "while" "(" Exp ")" Stmt
-            std::string while_entry_name = scope.current_func_ptr->get_koopa_var_name("%while_entry");
-            std::string while_body_name = scope.current_func_ptr->get_koopa_var_name("%while_body");
-            std::string after_while_name = scope.current_func_ptr->get_koopa_var_name("%basic_block");
+            std::string while_entry_name = scope.current_func_ptr->get_koopa_var_name(WHILE_ENTRY_BASENAME);
+            std::string while_body_name = scope.current_func_ptr->get_koopa_var_name(WHILE_BODY_BASENAME);
+            std::string after_while_name = scope.current_func_ptr->get_koopa_var_name(END_WHILE_BASENAME);
             out << "  jump " << while_entry_name << std::endl;
             out << std::endl;
 
@@ -428,14 +433,33 @@ public:
             out << std::endl;
 
             out << while_body_name << ":" << std::endl;
+            auto loop_info = std::make_pair(while_entry_name, after_while_name);
             scope.push_scope();
+            scope.current_func_ptr->enter_loop(loop_info);
             body_stmt->Dump(out);
+            scope.current_func_ptr->exit_loop();
             scope.pop_scope();
 
             out << "  jump " << while_entry_name << std::endl;
             out << std::endl;
 
             out << after_while_name << ":" << std::endl;
+        } else if (type == StmtType::BREAK) {
+            // jump end_while
+            std::string end_while_name_of_this_loop = scope.current_func_ptr->get_current_loop_info().second;
+            out << "  jump " << end_while_name_of_this_loop << std::endl;
+            out << std::endl;
+
+            std::string new_while_body_name = scope.current_func_ptr->get_koopa_var_name(WHILE_BODY_BASENAME);
+            out << new_while_body_name << ":" << std::endl;
+        } else if (type == StmtType::CONTINUE) {
+            // jump while_entry
+            std::string while_entry_name_of_this_loop = scope.current_func_ptr->get_current_loop_info().first;
+            out << "  jump " << while_entry_name_of_this_loop << std::endl;
+            out << std::endl;
+
+            std::string new_while_body_name = scope.current_func_ptr->get_koopa_var_name(WHILE_BODY_BASENAME);
+            out << new_while_body_name << ":" << std::endl;
         } else if (type == StmtType::RET_EXP) {
             // Stmt ::= "return" [Exp] ";"
             std::string temp_var_str;
@@ -446,7 +470,7 @@ public:
             out << "  jump %end" << std::endl;
             out << std::endl;
 
-            std::string temp_block_name = scope.current_func_ptr->get_koopa_var_name("%basic_block");
+            std::string temp_block_name = scope.current_func_ptr->get_koopa_var_name("%after_ret");
             out << temp_block_name << ":" << std::endl;
         } else {
             throw std::invalid_argument("StmtAST: both members are empty!");
