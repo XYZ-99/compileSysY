@@ -27,8 +27,12 @@ public:
     virtual Operand DumpExp() const {
         throw std::invalid_argument("Used BaseAST DumpExp!");
     }
-    virtual void InsertSymbol(std::string btype, std::ostream& out = std::cout) const = 0;
-    virtual std::string ComputeConstVal(std::ostream& out = std::cout) const = 0;
+    virtual void InsertSymbol(std::string btype, std::ostream& out = std::cout) const {
+        throw std::invalid_argument("Used BaseAST InsertSymbol!");
+    }
+    virtual std::string ComputeConstVal(std::ostream& out = std::cout) const {
+        throw std::invalid_argument("Used BaseAST ComputeConstVal!");
+    }
     virtual FuncType GetFuncTypeEnum() const {
         throw std::invalid_argument("Used BaseAST GetFuncTypeEnum!");
     }
@@ -58,10 +62,6 @@ public:
     void Dump(std::ostream& out) const override {
         comp_unit_item_list_ast->Dump(out);
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
-    std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
-    }
 };
 
 class CompUnitItemListAST : public BaseAST {
@@ -73,10 +73,6 @@ public:
             out << std::endl;
         }
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
-    std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
-    }
 };
 
 class CompUnitItemAST : public BaseAST {
@@ -85,10 +81,6 @@ public:
     void Dump(std::ostream& out) const override {
         func_def->Dump(out);
         out << std::endl;
-    }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
-    std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
     }
 };
 
@@ -108,10 +100,6 @@ public:
             throw std::invalid_argument("DeclAST: both members are null_ptr!");
         }
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
-    std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
-    }
 };
 
 class ConstDeclAST : public BaseAST {
@@ -122,17 +110,12 @@ public:
     void Dump(std::ostream& out) const override {
         const_def_list_ast->InsertSymbol(btype, out);
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
-    std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
-    }
 };
 
 class ConstDefAST : public BaseAST {
 public:
     std::string ident;
     std::unique_ptr<BaseAST> const_init_val;
-    void Dump(std::ostream& out) const override { }
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         std::string computed_val = const_init_val->ComputeConstVal(out);
         std::optional<int> const_init_val_int(std::stoi(computed_val));
@@ -142,15 +125,11 @@ public:
                                 const_init_val_int);
         scope.insert_var(ident, new_var);
     }
-    std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
-    }
 };
 
 class ConstDefListAST : public BaseAST {
 public:
     std::vector<std::unique_ptr<BaseAST> > const_def_list;
-    void Dump(std::ostream& out) const override { }
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         for (auto it = const_def_list.begin();
              it != const_def_list.end();
@@ -158,19 +137,14 @@ public:
             (*it)->InsertSymbol(btype, out);
         }
     }
-    std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
-    }
 };
 
 class ConstInitValAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> const_exp;
-    void Dump(std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
         return const_exp->ComputeConstVal(out);
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
 };
 
 class VarDeclAST : public BaseAST {
@@ -180,14 +154,11 @@ public:
     void Dump(std::ostream& out) const override {
         var_def_list_ast->InsertSymbol(btype, out);
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
-    std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
 };
 
 class VarDefListAST : public BaseAST {
 public:
     std::vector<std::unique_ptr<BaseAST> > var_def_list;
-    void Dump(std::ostream& out) const override { }
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         for (auto it = var_def_list.begin();
              it != var_def_list.end();
@@ -195,14 +166,12 @@ public:
             (*it)->InsertSymbol(btype, out);
         }
     }
-    std::string ComputeConstVal(std::ostream& out) const override { return {""}; }
 };
 
 class VarDefAST : public BaseAST {
 public:
     std::string ident;
     std::unique_ptr<BaseAST> init_val;
-    void Dump(std::ostream& out) const override { }
     void InsertSymbol(std::string btype, std::ostream& out) const override {
         // e.g. @x = alloc i32
         std::string koopa_var_name = "@" + scope.current_func_ptr->get_koopa_var_name(ident);
@@ -222,15 +191,11 @@ public:
             scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
         }
     }
-    std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
 };
 
 class InitValAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
-    void Dump(std::ostream& out) const override { }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
-    std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
     Operand ComputeInitVal() const override {
         return exp->DumpExp();
     }
@@ -239,11 +204,9 @@ public:
 class ConstExpAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
-    void Dump(std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
         return exp->ComputeConstVal(out);
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
 };
 
 class FuncDefAST : public BaseAST {
@@ -310,10 +273,6 @@ public:
 
         scope.exit_func();
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
-    std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
-    }
 };
 
 class FuncTypeAST : public BaseAST {
@@ -337,10 +296,6 @@ public:
             throw std::invalid_argument("Unidentified type in FuncTypeAST::GetFuncTypeEnum: " + type);
         }
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
-    std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
-    }
 };
 
 class BlockItemListAST : public BaseAST {
@@ -352,10 +307,6 @@ public:
              it++) {
             (*it)->Dump(out);
         }
-    }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
-    std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
     }
 };
 
@@ -374,10 +325,6 @@ public:
             throw std::invalid_argument("BlockItemAST: both decl and stmt are nullptr!");
         }
     }
-    std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
-    }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
 };
 
 class BlockAST : public BaseAST {
@@ -386,10 +333,6 @@ public:
     void Dump(std::ostream& out = std::cout) const override {
         block_item_list->Dump(out);
     }
-    std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
-    }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
 };
 
 enum class StmtType {
@@ -571,16 +514,11 @@ public:
             throw std::invalid_argument("StmtAST: both members are empty!");
         }
     }
-    std::string ComputeConstVal(std::ostream& out) const override {
-        return std::string("");
-    }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
 };
 
 class ExpAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> l_or_exp;
-    void Dump(std::ostream& out) const override { }
     Operand DumpExp() const override {
         Operand temp_var_op = l_or_exp->DumpExp();
         return temp_var_op;
@@ -588,7 +526,6 @@ public:
     std::string ComputeConstVal(std::ostream& out) const override {
         return l_or_exp->ComputeConstVal(out);
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
 };
 
 enum UnaryOpEnum {
@@ -604,7 +541,6 @@ public:
     std::unique_ptr<BaseAST> primary_exp;
     std::unique_ptr<BaseAST> unary_exp;
     unary_op_t unary_op;  // since once unary_exp is not nullptr, it must have been assigned
-    void Dump(std::ostream& out) const override { }
     Operand DumpExp() const override {
         Operand ret_op;
         Operand zero = Operand(0);
@@ -646,7 +582,6 @@ public:
         }
         return ret_op;
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
         std::string ret_str;
         if (primary_exp != nullptr) {
@@ -687,7 +622,6 @@ public:
     std::unique_ptr<int> number;
     std::string l_val;
     // Notes: PrimaryExp ::= "(" Exp ")" | LVal | Number;
-    void Dump(std::ostream& out) const override { }
     Operand DumpExp() const override {
         Operand ret_op;
         if (exp != nullptr) {
@@ -717,7 +651,6 @@ public:
         }
         return ret_op;
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
         std::string ret_str;
         if (exp != nullptr) {
@@ -747,7 +680,6 @@ public:
     std::unique_ptr<BaseAST> unary_exp;
     std::unique_ptr<BaseAST> mul_exp;
     std::string op;
-    void Dump(std::ostream& out) const override { }
     Operand DumpExp() const override {
         if (!op.empty()) {
             // MulExp ::= MulExp ("*" | "/" | "%") UnaryExp;
@@ -782,7 +714,6 @@ public:
             return var_op;
         }
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
         if (!op.empty()) {
             // MulExp ::= MulExp ("*" | "/" | "%") UnaryExp;
@@ -819,7 +750,6 @@ public:
     std::unique_ptr<BaseAST> add_exp;
     std::unique_ptr<BaseAST> mul_exp;
     std::string op;
-    void Dump(std::ostream& out) const override { }
     Operand DumpExp() const override {
         if (!op.empty()) {
             // AddExp ::= AddExp ("+" | "-") MulExp;
@@ -852,7 +782,6 @@ public:
             return var_op;
         }
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
         if (!op.empty()) {
             // AddExp ::= AddExp ("+" | "-") MulExp;
@@ -887,7 +816,6 @@ public:
     std::unique_ptr<BaseAST> add_exp;
     std::unique_ptr<BaseAST> rel_exp;
     std::string rel_op;
-    void Dump(std::ostream& out) const override { }
     Operand DumpExp() const override {
         if (!rel_op.empty()) {
             // RelExp ::= RelExp ("<" | ">" | "<=" | ">=") AddExp;
@@ -924,7 +852,6 @@ public:
             return var_op;
         }
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
         if (!rel_op.empty()) {
             // RelExp ::= RelExp ("<" | ">" | "<=" | ">=") AddExp;
@@ -963,7 +890,6 @@ public:
     std::unique_ptr<BaseAST> rel_exp;
     std::unique_ptr<BaseAST> eq_exp;
     std::string eq_op;
-    void Dump(std::ostream& out) const override { }
     Operand DumpExp() const override {
         if (eq_exp != nullptr) {
             // EqExp ::= EqExp ("==" | "!=") RelExp;
@@ -996,7 +922,6 @@ public:
             return var_op;
         }
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
         if (eq_exp != nullptr) {
             // EqExp ::= EqExp ("==" | "!=") RelExp;
@@ -1031,7 +956,6 @@ public:
     std::unique_ptr<BaseAST> eq_exp;
     std::unique_ptr<BaseAST> l_and_exp;
     // we do not need an and_op since there is only one choice.
-    void Dump(std::ostream& out) const override { }
     Operand DumpExp() const override {
         if (l_and_exp != nullptr) {
             // LAndExp ::= LAndExp "&&" EqExp;
@@ -1073,7 +997,6 @@ public:
             return var_op;
         }
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
     std::string ComputeConstVal(std::ostream& out) const override {
         if (l_and_exp != nullptr) {
             // LAndExp ::= LAndExp "&&" EqExp;
@@ -1097,7 +1020,6 @@ public:
     std::unique_ptr<BaseAST> l_and_exp;
     std::unique_ptr<BaseAST> l_or_exp;
     // we do not need an or_op since there is only one choice.
-    void Dump(std::ostream& out) const override { }
     Operand DumpExp() const override {
         if (l_or_exp != nullptr) {
             // LOrExp ::= LOrExp "||" LAndExp;
@@ -1147,7 +1069,6 @@ public:
             return l_and_exp->ComputeConstVal(out);
         }
     }
-    void InsertSymbol(std::string btype, std::ostream& out) const override { }
 };
 
 
