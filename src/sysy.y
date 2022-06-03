@@ -42,8 +42,8 @@ using namespace std;
 %nonassoc ELSE
 
 // 非终结符的类型定义
-%type <ast_val> FuncDef FuncType Decl ConstDecl ConstDef ConstDefList ConstInitVal VarDecl VarDefList VarDef
-%type <ast_val> InitVal BlockItem BlockItemList
+%type <ast_val> CompUnitItemList CompUnitItem FuncDef FuncType Decl ConstDecl ConstDef ConstDefList
+%type <ast_val> ConstInitVal VarDecl VarDefList VarDef InitVal BlockItem BlockItemList
 %type <ast_val> Block Stmt Exp UnaryExp PrimaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp ConstExp
 %type <str_val> AddOp MulOp LVal BType
 %type <int_val> Number UnaryOp
@@ -51,10 +51,31 @@ using namespace std;
 %%
 
 CompUnit
-  : FuncDef {
+  : CompUnitItemList {
     auto comp_unit = make_unique<CompUnitAST>();
-    comp_unit->func_def = unique_ptr<BaseAST>($1);
+    comp_unit->comp_unit_item_list_ast = unique_ptr<BaseAST>($1);
     ast = move(comp_unit);
+  }
+  ;
+
+CompUnitItemList
+  : CompUnitItem {
+    auto ast = new CompUnitItemListAST();
+    ast->comp_unit_item_list.push_back(unique_ptr<BaseAST>($1));
+    $$ = ast;
+  }
+  | CompUnitItemList CompUnitItem {
+    auto ast = (CompUnitItemListAST*)($1);
+    ast->comp_unit_item_list.push_back(unique_ptr<BaseAST>($2));
+    $$ = ast;
+  }
+  ;
+
+CompUnitItem
+  : FuncDef {
+    auto ast = new CompUnitItemAST();
+    ast->func_def = unique_ptr<BaseAST>($1);
+    $$ = ast;
   }
   ;
 

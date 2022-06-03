@@ -54,6 +54,33 @@ public:
 class CompUnitAST : public BaseAST {
 public:
     // 用智能指针管理对象
+    std::unique_ptr<BaseAST> comp_unit_item_list_ast;
+    void Dump(std::ostream& out) const override {
+        comp_unit_item_list_ast->Dump(out);
+    }
+    void InsertSymbol(std::string btype, std::ostream& out) const override { }
+    std::string ComputeConstVal(std::ostream& out) const override {
+        return std::string("");
+    }
+};
+
+class CompUnitItemListAST : public BaseAST {
+public:
+    std::vector<std::unique_ptr<BaseAST> > comp_unit_item_list;
+    void Dump(std::ostream& out) const override {
+        for (auto& item : comp_unit_item_list) {
+            item->Dump(out);
+            out << std::endl;
+        }
+    }
+    void InsertSymbol(std::string btype, std::ostream& out) const override { }
+    std::string ComputeConstVal(std::ostream& out) const override {
+        return std::string("");
+    }
+};
+
+class CompUnitItemAST : public BaseAST {
+public:
     std::unique_ptr<BaseAST> func_def;
     void Dump(std::ostream& out) const override {
         func_def->Dump(out);
@@ -491,7 +518,7 @@ public:
             auto loop_info = std::make_pair(while_entry_name, after_while_name);
             scope.push_scope();
             scope.current_func_ptr->enter_loop(loop_info);
-            body_stmt->Dump();
+            body_stmt->DumpInstructions();
             scope.current_func_ptr->exit_loop();
             scope.pop_scope();
 
