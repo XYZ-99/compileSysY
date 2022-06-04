@@ -49,6 +49,7 @@ LexOrOp       "||"
 <COMMENT_STATE_1>[^*/]      { BEGIN(COMMENT_STATE_0); }
 
 "int"           { return INT; }
+"void"          { return VOID; }
 "return"        { return RETURN; }
 "const"         { return CONST; }
 

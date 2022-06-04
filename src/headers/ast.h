@@ -36,6 +36,9 @@ public:
     virtual FuncType GetFuncTypeEnum() const {
         throw std::invalid_argument("Used BaseAST GetFuncTypeEnum!");
     }
+    virtual std::vector<Operand> DumpRParams() const {
+        throw std::invalid_argument("Used BaseAST DumpRParams!");
+    }
     virtual Operand ComputeInitVal() const {
         throw std::invalid_argument("Used BaseAST ComputeInitVal!");
     }
@@ -213,10 +216,14 @@ class FuncDefAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> func_type;
     std::string ident;
+    std::unique_ptr<BaseAST> func_f_param_list_ast;
     std::unique_ptr<BaseAST> block;
     void Dump(std::ostream& out) const override {
         FuncType type = func_type->GetFuncTypeEnum();
         scope.enter_func(type, ident);
+        func_f_param_list_ast->DumpInstructions();
+        scope.register_signature(scope.current_func_ptr);
+        scope.alloc_and_store_for_params(scope.current_func_ptr);
         block->Dump(out);  // Will structurize the function, without output yet
         std::string end_block_name = scope.current_func_ptr->end_block_ptr->basic_block_name;
         Operand end_block_op = Operand(end_block_name, OperandType::BLOCK);
@@ -257,10 +264,18 @@ public:
         out << "@" << ident;
 
         out << "(";
-        // params?
+        if (!scope.current_func_ptr->param_list.empty()) {
+            auto& list = scope.current_func_ptr->param_list;
+            out << list[0];
+            for (auto i = 1; i < list.size(); i++) {
+                out << ", " << list[i];
+            }
+        }
         out << ")";
-        out << ": ";
-        func_type->Dump(out);
+        if (type == FuncType::INT) {
+            out << ": ";
+            func_type->Dump(out);
+        }
         out << " {" << std::endl;
 
         out << *scope.current_func_ptr->entry_block_ptr << std::endl;
@@ -275,9 +290,36 @@ public:
     }
 };
 
+class FuncFParamListAST : public BaseAST {
+public:
+    std::vector<std::unique_ptr<BaseAST> > func_f_param_list;
+    void DumpInstructions() const override {
+        for (auto& param : func_f_param_list) {
+            param->DumpInstructions();
+        }
+    }
+};
+
+class FuncFParamAST : public BaseAST {
+public:
+    std::string btype;
+    std::string ident;
+    void DumpInstructions() const override {
+        if (btype == "int") {
+            std::string temp_var_name = "%" + std::to_string(temp_var++);
+            FParam param = FParam(temp_var_name, OperandType::INT);
+            scope.current_func_ptr->param_list.push_back(param);
+            scope.current_func_ptr->original_param_ident_list.push_back(ident);
+        } else {
+            throw std::invalid_argument("In FuncFParamAST: not recognized btype: " + btype);
+        }
+    }
+};
+
 class FuncTypeAST : public BaseAST {
 public:
     std::string type;
+    // TODO: Directly assign type: sysy.y: FuncType
     void Dump(std::ostream& out) const override {
         if (type == "int") {
             out << "i32";
@@ -541,11 +583,36 @@ public:
     std::unique_ptr<BaseAST> primary_exp;
     std::unique_ptr<BaseAST> unary_exp;
     unary_op_t unary_op;  // since once unary_exp is not nullptr, it must have been assigned
+    std::string ident;
+    std::unique_ptr<BaseAST> func_r_param_list_ast;
     Operand DumpExp() const override {
         Operand ret_op;
         Operand zero = Operand(0);
         if (primary_exp != nullptr) {
             ret_op = primary_exp->DumpExp();
+        } else if (!ident.empty()) {
+            auto op_list = func_r_param_list_ast->DumpRParams();
+            /* Since the func name belongs to the global scope,
+             * we can assume that it remains the same name in koopa.
+             */
+            FuncType func_type = scope.get_func_type_by_ident(ident);
+            Operand func = Operand("@" + ident);
+            if (func_type == FuncType::INT) {
+                std::string temp_var_name = "%" + std::to_string(temp_var++);
+                ret_op = Operand(temp_var_name);
+                auto call_instr = std::make_unique<Instruction>(OpType::CALL,
+                                                                ret_op,
+                                                                func,
+                                                                op_list);
+                scope.current_func_ptr->append_instr_to_current_block(std::move(call_instr));
+            } else {
+                // VOID
+                // WARNING: Let ret_op be uninitialized.
+                auto call_instr = std::make_unique<Instruction>(OpType::CALL,
+                                                                func,
+                                                                op_list);
+                scope.current_func_ptr->append_instr_to_current_block(std::move(call_instr));
+            }
         } else if (unary_exp != nullptr) {
             Operand unary_res = unary_exp->DumpExp();
             switch (unary_op) {
@@ -608,9 +675,23 @@ public:
                     throw std::invalid_argument("unary_op is none of those in the enum!");
             }
         } else {
+            // Call function is not considered since it will not compute const val.
             throw std::invalid_argument("primary_exp and unary_exp are both nullptr!");
         }
         return ret_str;
+    }
+};
+
+class FuncRParamListAST : public BaseAST {
+public:
+    std::vector<std::unique_ptr<BaseAST> > func_r_param_list;
+    std::vector<Operand> DumpRParams() const override {
+        std::vector<Operand> ret_list;
+        for (auto& exp : func_r_param_list) {
+            Operand op = exp->DumpExp();
+            ret_list.push_back(op);
+        }
+        return ret_list;
     }
 };
 

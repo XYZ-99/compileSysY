@@ -7,7 +7,7 @@
 
 class Variable {
 public:
-    std::string type;
+    std::string type; // TODO: change to enum
     std::string koopa_var_name;
     std::optional<int> const_val;
     Variable(std::string _type,

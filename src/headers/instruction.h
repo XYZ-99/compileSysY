@@ -13,6 +13,7 @@ enum class OpType {
     BR,
     JUMP,
     RET,
+    CALL,
     ALLOC,
     LOAD,
     STORE,
@@ -83,11 +84,24 @@ public:
     std::optional<Operand> t1;
     std::optional<Operand> t2;
 
+    std::optional<std::vector<Operand> > param_list;
+
     Instruction(OpType type): op_type(type) { }
     Instruction(OpType type, Operand _t0): op_type(type), t0(_t0) { }
     Instruction(OpType type, Operand _t0, Operand _t1): op_type(type), t0(_t0), t1(_t1) { }
     Instruction(OpType type, Operand _t0, Operand _t1, Operand _t2): op_type(type), t0(_t0),
                                                                      t1(_t1), t2(_t2) { }
+    Instruction(OpType type, Operand func, std::vector<Operand> op_list): op_type(type),
+                                                                          t0(func),
+                                                                          param_list(op_list){
+        assert(type == OpType::CALL);
+    }
+    Instruction(OpType type, Operand _t0, Operand func, std::vector<Operand> op_list): op_type(type),
+                                                                          t0(_t0),
+                                                                          t1(func),
+                                                                          param_list(op_list){
+        assert(type == OpType::CALL);
+    }
 
     friend std::ostream& operator<<(std::ostream& out, const Instruction& instr) {
         out << "  ";
@@ -105,6 +119,24 @@ public:
                 if (instr.t0.has_value()) {
                     out << " " << instr.t0;
                 }
+                break;
+            }
+            case OpType::CALL: {
+                if (instr.t1.has_value()) {
+                    // %0 = call @half(%1, %2)
+                    out << instr.t0 << " = call " << instr.t1 << "(";
+                } else {
+                    // call @half(%1, %2)
+                    out << "call " << instr.t0 << "(";
+                }
+                auto& param_list_unwrapped = instr.param_list.value();
+                if (!param_list_unwrapped.empty()) {
+                    out << param_list_unwrapped[0];
+                    for (auto i = 1; i < param_list_unwrapped.size(); i++) {
+                        out << ", " << param_list_unwrapped[i];
+                    }
+                }
+                out << ")";
                 break;
             }
             case OpType::ALLOC: {

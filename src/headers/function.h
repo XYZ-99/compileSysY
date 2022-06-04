@@ -13,11 +13,41 @@ enum class FuncType {
     INT
 };
 
+class FParam {
+public:
+    std::string koopa_var_name;
+    OperandType type;
+    FParam(std::string _name, OperandType _type): koopa_var_name(_name), type(_type) { }
+    friend std::ostream& operator<<(std::ostream& out, const FParam& param) {
+        out << param.koopa_var_name << ": ";
+        switch(param.type) {
+            case OperandType::INT:
+                out << "i32";
+                break;
+            default:
+                throw std::invalid_argument("When outputing FParam: Unrecognized param.tyoe.");
+        }
+        return out;
+    }
+};
+
+class Signature {
+public:
+    FuncType func_type;
+    std::string ident;
+    std::vector<OperandType> param_types;
+
+    Signature(FuncType _type, std::string _ident, std::vector<OperandType> _param_types): func_type(_type),
+                                                                                          ident(_ident),
+                                                                                          param_types(_param_types) { }
+};
 
 class Function {
 public:
     FuncType func_type;
     std::string ident;
+    std::vector<FParam> param_list;
+    std::vector<std::string> original_param_ident_list;
     std::optional<Operand> ret_var_op;
 
     Function(FuncType _type, std::string _ident): func_type(_type), ident(_ident) {
@@ -47,7 +77,7 @@ public:
          * Though the koopa_var_name stored into the symbol table should include the @ sign
          *     because that is the whole name.
          * 2. This method will also serve for the name of the basic block, in case the name collides with the vars.
-         *    In this case, the leading % is excluded as well.
+         *    In this case, the leading % is included.
          */
         auto pair_it = koopa_var_count_map.find(name);
         if (pair_it == koopa_var_count_map.end()) {

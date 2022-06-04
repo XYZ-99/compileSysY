@@ -30,7 +30,7 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN CONST WHILE BREAK CONTINUE
+%token INT VOID RETURN CONST WHILE BREAK CONTINUE
 %token <str_val> IDENT REL_OP EQUAL_OP AND_OP OR_OP
 %token <int_val> INT_CONST
 
@@ -42,9 +42,10 @@ using namespace std;
 %nonassoc ELSE
 
 // 非终结符的类型定义
-%type <ast_val> CompUnitItemList CompUnitItem FuncDef FuncType Decl ConstDecl ConstDef ConstDefList
-%type <ast_val> ConstInitVal VarDecl VarDefList VarDef InitVal BlockItem BlockItemList
-%type <ast_val> Block Stmt Exp UnaryExp PrimaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp ConstExp
+%type <ast_val> CompUnitItemList CompUnitItem FuncDef FuncFParamList FuncFParam FuncType
+%type <ast_val> Decl ConstDecl ConstDef ConstDefList ConstInitVal VarDecl VarDefList VarDef
+%type <ast_val> InitVal BlockItem BlockItemList Block Stmt Exp UnaryExp FuncRParamList PrimaryExp MulExp
+%type <ast_val> AddExp RelExp EqExp LAndExp LOrExp ConstExp
 %type <str_val> AddOp MulOp LVal BType
 %type <int_val> Number UnaryOp
 
@@ -184,10 +185,43 @@ InitVal
 FuncDef
   : FuncType IDENT '(' ')' Block {
     auto ast = new FuncDefAST();  // Cannot type-cast if we use make_unique<FuncDefAST>(); and move(ast);
-                                  // probably because $$ is BaseAST* instead of unique_ptr<BaseAST>
+                                  // because $$ is BaseAST* instead of unique_ptr<BaseAST>
     ast->func_type = unique_ptr<BaseAST>($1);
     ast->ident = *unique_ptr<string>($2);
+    ast->func_f_param_list_ast = unique_ptr<BaseAST>(new FuncFParamListAST());
     ast->block = unique_ptr<BaseAST>($5);
+    $$ = ast;
+  }
+  | FuncType IDENT '(' FuncFParamList ')' Block {
+    auto ast = new FuncDefAST();  // Cannot type-cast if we use make_unique<FuncDefAST>(); and move(ast);
+                                  // because $$ is BaseAST* instead of unique_ptr<BaseAST>
+    ast->func_type = unique_ptr<BaseAST>($1);
+    ast->ident = *unique_ptr<string>($2);
+    ast->func_f_param_list_ast = unique_ptr<BaseAST>($4);
+    ast->block = unique_ptr<BaseAST>($6);
+    $$ = ast;
+  }
+  ;
+
+FuncFParamList
+  : FuncFParam
+  {
+    auto ast = new FuncFParamListAST();
+    ast->func_f_param_list.push_back(unique_ptr<BaseAST>($1));
+    $$ = ast;
+  }
+  | FuncFParamList ',' FuncFParam {
+    auto ast = (FuncFParamListAST*)($1);
+    ast->func_f_param_list.push_back(unique_ptr<BaseAST>($3));
+    $$ = ast;
+  }
+  ;
+
+FuncFParam
+  : BType IDENT {
+    auto ast = new FuncFParamAST();
+    ast->btype = *unique_ptr<string>($1);
+    ast->ident = *unique_ptr<string>($2);
     $$ = ast;
   }
   ;
@@ -196,6 +230,11 @@ FuncType
   : INT {
     auto ast = new FuncTypeAST();
     ast->type = string("int");
+    $$ = ast;
+  }
+  | VOID {
+    auto ast = new FuncTypeAST();
+    ast->type = string("void");
     $$ = ast;
   }
   ;
@@ -357,10 +396,35 @@ UnaryExp
     ast->primary_exp = unique_ptr<BaseAST>($1);
     $$ = ast;
   }
+  | IDENT '(' ')' {
+    auto ast = new UnaryExpAST();
+    ast->ident = *unique_ptr<string>($1);
+    ast->func_r_param_list_ast = unique_ptr<BaseAST>(new FuncRParamListAST());
+    $$ = ast;
+  }
+  | IDENT '(' FuncRParamList ')' {
+    auto ast = new UnaryExpAST();
+    ast->ident = *unique_ptr<string>($1);
+    ast->func_r_param_list_ast = unique_ptr<BaseAST>($3);
+    $$ = ast;
+  }
   | UnaryOp UnaryExp {
     auto ast = new UnaryExpAST();
     ast->unary_op = $1;
     ast->unary_exp = unique_ptr<BaseAST>($2);
+    $$ = ast;
+  }
+  ;
+
+FuncRParamList
+  : Exp {
+    auto ast = new FuncRParamListAST();
+    ast->func_r_param_list.push_back(unique_ptr<BaseAST>($1));
+    $$ = ast;
+  }
+  | FuncRParamList ',' Exp {
+    auto ast = (FuncRParamListAST*)($1);
+    ast->func_r_param_list.push_back(unique_ptr<BaseAST>($3));
     $$ = ast;
   }
   ;
