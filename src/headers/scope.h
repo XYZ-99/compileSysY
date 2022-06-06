@@ -82,7 +82,7 @@ public:
     }
 
     void insert_var(std::string ident, const Variable& var) {
-        std::unordered_map<std::string, Variable>& current_table = *scoped_symbol_tables.rbegin();
+        std::unordered_map<std::string, Variable>& current_table = *scoped_symbol_tables.rbegin();  // back()
         current_table.emplace(ident, var);
     }
 
@@ -98,6 +98,13 @@ public:
     void enter_func(FuncType type, std::string func_ident) {
         current_func_ptr = std::make_unique<Function>(type, func_ident);
         push_scope();
+        auto& global_symbol_table = scoped_symbol_tables[0];
+        for (const auto& [key, value] : global_symbol_table) {
+            current_func_ptr->get_koopa_var_name(key);  // key is the ident
+        }
+        for (const auto& signature: func_signatures) {
+            current_func_ptr->get_koopa_var_name(signature.ident);
+        }
     }
 
     void exit_func() {

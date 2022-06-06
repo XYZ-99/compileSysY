@@ -73,7 +73,12 @@ CompUnitItemList
   ;
 
 CompUnitItem
-  : FuncDef {
+  : Decl {
+    auto ast = new CompUnitItemAST();
+    ast->decl = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  | FuncDef {
     auto ast = new CompUnitItemAST();
     ast->func_def = unique_ptr<BaseAST>($1);
     $$ = ast;

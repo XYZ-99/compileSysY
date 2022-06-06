@@ -27,7 +27,7 @@ public:
     virtual Operand DumpExp() const {
         throw std::invalid_argument("Used BaseAST DumpExp!");
     }
-    virtual void InsertSymbol(std::string btype, std::ostream& out = std::cout) const {
+    virtual void InsertSymbol(std::string btype, std::ostream& out = std::cout, bool is_global = false) const {
         throw std::invalid_argument("Used BaseAST InsertSymbol!");
     }
     virtual std::string ComputeConstVal(std::ostream& out = std::cout) const {
@@ -44,6 +44,9 @@ public:
     }
     virtual void DumpInstructions() const {
         throw std::invalid_argument("Used BaseAST DumpInstructions!");
+    }
+    virtual void DumpGlobalDecl(std::ostream& out) const {
+        throw std::invalid_argument("Used BaseAST DumpGlobalDecl!");
     }
     inline static int temp_var = 0;  // TODO: search temp_var
     static Scope scope;
@@ -82,8 +85,15 @@ public:
 class CompUnitItemAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> func_def;
+    std::unique_ptr<BaseAST> decl;
     void Dump(std::ostream& out) const override {
-        func_def->Dump(out);
+        if (decl != nullptr) {
+            decl->DumpGlobalDecl(out);
+        } else if (func_def != nullptr) {
+            func_def->Dump(out);
+        } else {
+            throw std::invalid_argument("Both decl and func_def are nullptr(s)!");
+        }
         out << std::endl;
     }
 };
@@ -93,15 +103,24 @@ public:
     std::unique_ptr<BaseAST> const_decl;
     std::unique_ptr<BaseAST> var_decl;
     void Dump(std::ostream& out) const override {
-        // For now, because the Decl only declares a value that can be directly computed,
-        // we just compute the value,
-        // and add it into the symbol table.
         if (const_decl != nullptr) {
+            // For now, because the Decl only declares a value that can be directly computed,
+            // we just compute the value,
+            // and add it into the symbol table.
             const_decl->Dump(out);
         } else if (var_decl != nullptr) {
             var_decl->Dump(out);
         } else {
-            throw std::invalid_argument("DeclAST: both members are null_ptr!");
+            throw std::invalid_argument("DeclAST: both members are nullptr!");
+        }
+    }
+    void DumpGlobalDecl(std::ostream& out) const override {
+        if (const_decl != nullptr) {
+            const_decl->DumpGlobalDecl(out);
+        } else if (var_decl != nullptr) {
+            var_decl->DumpGlobalDecl(out);
+        } else {
+            throw std::invalid_argument("DeclAST::DumpGlobalDecl: both members are nullptr!");
         }
     }
 };
@@ -112,7 +131,10 @@ public:
     // _ast to be distinguished from the vector in const_def_list
     std::unique_ptr<BaseAST> const_def_list_ast;
     void Dump(std::ostream& out) const override {
-        const_def_list_ast->InsertSymbol(btype, out);
+        const_def_list_ast->InsertSymbol(btype, out, false);
+    }
+    void DumpGlobalDecl(std::ostream& out) const override {
+        const_def_list_ast->InsertSymbol(btype, out, true);
     }
 };
 
@@ -120,10 +142,15 @@ class ConstDefAST : public BaseAST {
 public:
     std::string ident;
     std::unique_ptr<BaseAST> const_init_val;
-    void InsertSymbol(std::string btype, std::ostream& out) const override {
+    void InsertSymbol(std::string btype, std::ostream& out, bool is_global) const override {
         std::string computed_val = const_init_val->ComputeConstVal(out);
         std::optional<int> const_init_val_int(std::stoi(computed_val));
-        std::string koopa_var_name = scope.current_func_ptr->get_koopa_var_name(ident);
+        std::string koopa_var_name;
+        if (is_global) {
+            koopa_var_name = "@" + ident;  // Assume that a global name will not repeat itself
+        } else {
+            koopa_var_name = scope.current_func_ptr->get_koopa_var_name(ident);
+        }
         auto new_var = Variable(btype,
                                 koopa_var_name,
                                 const_init_val_int);
@@ -134,11 +161,11 @@ public:
 class ConstDefListAST : public BaseAST {
 public:
     std::vector<std::unique_ptr<BaseAST> > const_def_list;
-    void InsertSymbol(std::string btype, std::ostream& out) const override {
+    void InsertSymbol(std::string btype, std::ostream& out, bool is_global) const override {
         for (auto it = const_def_list.begin();
              it != const_def_list.end();
              it++) {
-            (*it)->InsertSymbol(btype, out);
+            (*it)->InsertSymbol(btype, out, is_global);
         }
     }
 };
@@ -156,18 +183,21 @@ public:
     std::string btype;
     std::unique_ptr<BaseAST> var_def_list_ast;
     void Dump(std::ostream& out) const override {
-        var_def_list_ast->InsertSymbol(btype, out);
+        var_def_list_ast->InsertSymbol(btype, out, false);
+    }
+    void DumpGlobalDecl(std::ostream& out) const override {
+        var_def_list_ast->InsertSymbol(btype, out, true);
     }
 };
 
 class VarDefListAST : public BaseAST {
 public:
     std::vector<std::unique_ptr<BaseAST> > var_def_list;
-    void InsertSymbol(std::string btype, std::ostream& out) const override {
+    void InsertSymbol(std::string btype, std::ostream& out, bool is_global = false) const override {
         for (auto it = var_def_list.begin();
              it != var_def_list.end();
              it++) {
-            (*it)->InsertSymbol(btype, out);
+            (*it)->InsertSymbol(btype, out, is_global);
         }
     }
 };
@@ -176,23 +206,44 @@ class VarDefAST : public BaseAST {
 public:
     std::string ident;
     std::unique_ptr<BaseAST> init_val;
-    void InsertSymbol(std::string btype, std::ostream& out) const override {
+    void InsertSymbol(std::string btype, std::ostream& out, bool is_global) const override {
         // e.g. @x = alloc i32
-        std::string koopa_var_name = "@" + scope.current_func_ptr->get_koopa_var_name(ident);
+
+        std::string koopa_var_name;
+        if (is_global) {
+            koopa_var_name = "@" + ident;  // Assume that a global var name will not repeat itself.
+        } else {
+            koopa_var_name = "@" + scope.current_func_ptr->get_koopa_var_name(ident);
+        }
         Operand alloc_op = Operand(koopa_var_name);
-        scope.current_func_ptr->append_alloc_to_entry_block(alloc_op);
+        if (is_global) {
+            // TODO: fix btype
+            out << "global " << koopa_var_name << " = alloc i32, ";
+        } else {
+            scope.current_func_ptr->append_alloc_to_entry_block(alloc_op);
+        }
 
         auto new_var = Variable(btype, koopa_var_name);
         scope.insert_var(ident, new_var);
 
-        // e.g. store 10, @x
-        if (init_val != nullptr) {
-            Operand computed_init_val = init_val->ComputeInitVal();
-            Operand store_koopa_var = Operand(koopa_var_name);
-            auto instr = std::make_unique<Instruction>(OpType::STORE,
-                                                       computed_init_val,
-                                                       store_koopa_var);
-            scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
+        if (is_global) {
+            if (init_val != nullptr) {
+                std::string init_val_str = init_val->ComputeConstVal(out);
+                out << init_val_str;
+            } else {
+                out << "zeroinit";
+            }
+            out << std::endl;
+        } else {
+            // e.g. store 10, @x
+            if (init_val != nullptr) {
+                Operand computed_init_val = init_val->ComputeInitVal();
+                Operand store_koopa_var = Operand(koopa_var_name);
+                auto instr = std::make_unique<Instruction>(OpType::STORE,
+                                                           computed_init_val,
+                                                           store_koopa_var);
+                scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
+            }
         }
     }
 };
@@ -202,6 +253,10 @@ public:
     std::unique_ptr<BaseAST> exp;
     Operand ComputeInitVal() const override {
         return exp->DumpExp();
+    }
+    std::string ComputeConstVal(std::ostream& out) const override {
+        // Only use for global decl
+        return exp->ComputeConstVal(out);
     }
 };
 
