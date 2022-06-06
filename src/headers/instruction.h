@@ -33,10 +33,54 @@ enum class OpType {
     XOR,
 };
 
-enum class OperandType {
+enum class OperandTypeEnum {
     INT,
     BLOCK,
+    POINTER,
+};
 
+class OperandType {
+public:
+    OperandTypeEnum type_enum;
+    std::shared_ptr<OperandType> pointed_type;
+
+    OperandType() { }
+
+    OperandType(OperandTypeEnum _type_enum) {
+        type_enum = _type_enum;
+    }
+
+    OperandType(OperandTypeEnum _type_enum, OperandType _sub_type) {
+        type_enum = _type_enum;
+        switch(type_enum) {
+            case OperandTypeEnum::POINTER:
+                pointed_type = std::make_shared<OperandType>(_sub_type);
+                break;
+            default:
+                throw std::invalid_argument("When constructing OperandType, using pointer constructor with other types!");
+        }
+    }
+
+    OperandType& operator=(const OperandTypeEnum& _type_enum) {
+        type_enum = _type_enum;
+        return *this;
+    }
+
+    friend std::string to_string(const OperandType& type) {
+        switch(type.type_enum) {
+            case OperandTypeEnum::INT:
+                return std::string("i32");
+                break;
+            case OperandTypeEnum::POINTER: {
+                std::string pointed_type_str = to_string(*(type.pointed_type));
+                return "*" + pointed_type_str;
+                break;
+            }
+            default:
+                int value = static_cast<int>(type.type_enum);
+                throw std::invalid_argument("to_string: Not implemented for this OperandType: " + std::to_string(value));
+        }
+    }
 };
 
 class Operand {
@@ -47,9 +91,11 @@ public:
         assoc_val = "uninitialized";
     }
     Operand(int val): assoc_val(val) {
-        type = OperandType::INT;
+        type = OperandTypeEnum::INT;
     }
-    Operand(std::string val, OperandType _type = OperandType::INT): assoc_val(val), type(_type) { }
+    Operand(std::string val, OperandTypeEnum _type_enum = OperandTypeEnum::INT): assoc_val(val), type(_type_enum) { }
+
+    Operand(std::string val, OperandType _type): assoc_val(val), type(_type) { }
 
     friend std::ostream& operator<<(std::ostream& out, const Operand& op) {
         size_t idx = op.assoc_val.index();
@@ -140,7 +186,7 @@ public:
                 break;
             }
             case OpType::ALLOC: {
-                if (instr.t0.value().type == OperandType::INT) {
+                if (instr.t0.value().type.type_enum == OperandTypeEnum::INT) {
                     out << instr.t0 << " = alloc i32";
                 } else {
                     throw std::invalid_argument("When output an alloc instr, the Operand type is not recognized!");

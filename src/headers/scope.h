@@ -14,12 +14,14 @@ public:
         scoped_symbol_tables = std::vector<std::unordered_map<std::string, Variable> >{
             std::unordered_map<std::string, Variable>()
         };
+        register_lib_funcs();
     }
 
     std::unique_ptr<Function> current_func_ptr;
     std::vector<Signature> func_signatures;
+    std::vector<Signature> lib_func_signatures;
 
-    void register_signature(const std::unique_ptr<Function>& func_ptr) {
+    Signature register_signature(const std::unique_ptr<Function>& func_ptr) {
         std::vector<OperandType> op_type_list;
         for (auto& param : func_ptr->param_list) {
             op_type_list.push_back(param.type);
@@ -28,6 +30,7 @@ public:
                                    func_ptr->ident,
                                    op_type_list);
         func_signatures.push_back(sign);
+        return sign;
     }
 
     FuncType get_func_type_by_ident(std::string ident) {
@@ -49,7 +52,7 @@ public:
                                                              alloc_op);
             func_ptr->entry_block_ptr->instruction_lists.push_back(std::move(alloc_instr));
             // insert into the symbol table
-            if (func_ptr->param_list[i].type == OperandType::INT) {
+            if (func_ptr->param_list[i].type.type_enum == OperandTypeEnum::INT) {
                 Variable var = Variable("int", temp_var_name);
                 insert_var(func_ptr->original_param_ident_list[i], var);
             } else {
@@ -100,6 +103,45 @@ public:
     void exit_func() {
         current_func_ptr = nullptr;
         pop_scope();
+    }
+
+    void register_lib_funcs() {
+        Signature getint = Signature(FuncType::INT, "getint", std::vector<OperandType>());
+        Signature getch = Signature(FuncType::INT, "getch", std::vector<OperandType>());
+        Signature getarray = Signature(FuncType::INT, "getarray", std::vector<OperandType>{
+            OperandType(OperandTypeEnum::POINTER, OperandType(OperandTypeEnum::INT))
+        });
+        Signature putint = Signature(FuncType::VOID, "putint", std::vector<OperandType>{
+            OperandType(OperandTypeEnum::INT)
+        });
+        Signature putch = Signature(FuncType::VOID, "putch", std::vector<OperandType>{
+            OperandType(OperandTypeEnum::INT)
+        });
+        Signature putarray = Signature(FuncType::VOID, "putarray", std::vector<OperandType>{
+            OperandType(OperandTypeEnum::INT),
+            OperandType(OperandTypeEnum::POINTER, OperandType(OperandTypeEnum::INT))
+        });
+        Signature starttime = Signature(FuncType::VOID, "starttime", std::vector<OperandType>());
+        Signature stoptime = Signature(FuncType::VOID, "stoptime", std::vector<OperandType>());
+
+        lib_func_signatures.push_back(getint);
+        lib_func_signatures.push_back(getch);
+        lib_func_signatures.push_back(getarray);
+        lib_func_signatures.push_back(putint);
+        lib_func_signatures.push_back(putch);
+        lib_func_signatures.push_back(putarray);
+        lib_func_signatures.push_back(starttime);
+        lib_func_signatures.push_back(stoptime);
+
+        // append the signatures
+        func_signatures.insert(func_signatures.end(), lib_func_signatures.begin(), lib_func_signatures.end());
+    }
+
+    void DumpStdlibSignatures(std::ostream& out) {
+        for (auto signature: lib_func_signatures) {
+            out << "decl " << signature << std::endl;
+        }
+        out << std::endl;
     }
 };
 

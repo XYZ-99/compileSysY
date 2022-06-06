@@ -63,6 +63,7 @@ public:
     // 用智能指针管理对象
     std::unique_ptr<BaseAST> comp_unit_item_list_ast;
     void Dump(std::ostream& out) const override {
+        scope.DumpStdlibSignatures(out);
         comp_unit_item_list_ast->Dump(out);
     }
 };
@@ -222,18 +223,18 @@ public:
         FuncType type = func_type->GetFuncTypeEnum();
         scope.enter_func(type, ident);
         func_f_param_list_ast->DumpInstructions();
-        scope.register_signature(scope.current_func_ptr);
+        const Signature current_sign = scope.register_signature(scope.current_func_ptr);
         scope.alloc_and_store_for_params(scope.current_func_ptr);
         block->Dump(out);  // Will structurize the function, without output yet
         std::string end_block_name = scope.current_func_ptr->end_block_ptr->basic_block_name;
-        Operand end_block_op = Operand(end_block_name, OperandType::BLOCK);
+        Operand end_block_op = Operand(end_block_name, OperandTypeEnum::BLOCK);
         auto jump_ret_instr = std::make_unique<Instruction>(OpType::JUMP,
                                                             end_block_op);
         scope.current_func_ptr->end_current_block_by_instr(std::move(jump_ret_instr),
                                                            false);
         // add jump to the entry block
         std::string first_block_name = scope.current_func_ptr->basic_block_ptrs[0]->basic_block_name;
-        Operand first_block_op = Operand(first_block_name, OperandType::BLOCK);
+        Operand first_block_op = Operand(first_block_name, OperandTypeEnum::BLOCK);
         auto entry_jump_instr = std::make_unique<Instruction>(OpType::JUMP,
                                                               first_block_op);
         scope.current_func_ptr->entry_block_ptr->ending_instruction = std::move(entry_jump_instr);
@@ -307,7 +308,7 @@ public:
     void DumpInstructions() const override {
         if (btype == "int") {
             std::string temp_var_name = "%" + std::to_string(temp_var++);
-            FParam param = FParam(temp_var_name, OperandType::INT);
+            FParam param = FParam(temp_var_name, OperandTypeEnum::INT);
             scope.current_func_ptr->param_list.push_back(param);
             scope.current_func_ptr->original_param_ident_list.push_back(ident);
         } else {
@@ -423,14 +424,14 @@ public:
         } else if (type == StmtType::IF) {
             Operand temp_var_op = exp->DumpExp();
             std::string true_block_name = scope.current_func_ptr->get_koopa_var_name("%true_block");
-            Operand true_block_op = Operand(true_block_name, OperandType::BLOCK);
+            Operand true_block_op = Operand(true_block_name, OperandTypeEnum::BLOCK);
             std::string end_if_block_name = scope.current_func_ptr->get_koopa_var_name("%end_if");
-            Operand end_if_block_op = Operand(end_if_block_name, OperandType::BLOCK);
+            Operand end_if_block_op = Operand(end_if_block_name, OperandTypeEnum::BLOCK);
 
             if (else_stmt != nullptr) {
                 // Stmt ::= "if" "(" Exp ")" Stmt "else" Stmt
                 std::string else_block_name = scope.current_func_ptr->get_koopa_var_name("%else_block");
-                Operand else_block_op = Operand(else_block_name, OperandType::BLOCK);
+                Operand else_block_op = Operand(else_block_name, OperandTypeEnum::BLOCK);
 
                 auto br_instr = std::make_unique<Instruction>(OpType::BR,
                                                            temp_var_op,
@@ -482,9 +483,9 @@ public:
             std::string while_body_name = scope.current_func_ptr->get_koopa_var_name(WHILE_BODY_BASENAME);
             std::string after_while_name = scope.current_func_ptr->get_koopa_var_name(END_WHILE_BASENAME);
 
-            Operand while_entry_op = Operand(while_entry_name, OperandType::BLOCK);
-            Operand while_body_op = Operand(while_body_name, OperandType::BLOCK);
-            Operand after_while_op = Operand(after_while_name, OperandType::BLOCK);
+            Operand while_entry_op = Operand(while_entry_name, OperandTypeEnum::BLOCK);
+            Operand while_body_op = Operand(while_body_name, OperandTypeEnum::BLOCK);
+            Operand after_while_op = Operand(after_while_name, OperandTypeEnum::BLOCK);
             auto jump_to_entry_instr = std::make_unique<Instruction>(OpType::JUMP,
                                                             while_entry_op);
             scope.current_func_ptr->end_current_block_by_instr(std::move(jump_to_entry_instr),
@@ -515,7 +516,7 @@ public:
         } else if (type == StmtType::BREAK) {
             // jump end_while
             std::string end_while_name_of_this_loop = scope.current_func_ptr->get_current_loop_info().second;
-            Operand end_while_op = Operand(end_while_name_of_this_loop, OperandType::BLOCK);
+            Operand end_while_op = Operand(end_while_name_of_this_loop, OperandTypeEnum::BLOCK);
             auto jump_instr = std::make_unique<Instruction>(OpType::JUMP,
                                                             end_while_op);
             std::string new_while_body_name = scope.current_func_ptr->get_koopa_var_name(WHILE_BODY_BASENAME);
@@ -525,7 +526,7 @@ public:
         } else if (type == StmtType::CONTINUE) {
             // jump while_entry
             std::string while_entry_name_of_this_loop = scope.current_func_ptr->get_current_loop_info().first;
-            Operand while_entry_op = Operand(while_entry_name_of_this_loop, OperandType::BLOCK);
+            Operand while_entry_op = Operand(while_entry_name_of_this_loop, OperandTypeEnum::BLOCK);
             auto jump_instr = std::make_unique<Instruction>(OpType::JUMP,
                                                             while_entry_op);
             std::string new_while_body_name = scope.current_func_ptr->get_koopa_var_name(WHILE_BODY_BASENAME);
@@ -545,7 +546,7 @@ public:
                 scope.current_func_ptr->append_instr_to_current_block(std::move(store_ins));
             }
             std::string end_block_name = scope.current_func_ptr->end_block_ptr->basic_block_name;
-            Operand end_block_op = Operand(end_block_name, OperandType::BLOCK);
+            Operand end_block_op = Operand(end_block_name, OperandTypeEnum::BLOCK);
             auto jump_ins = std::make_unique<Instruction>(OpType::JUMP,
                                                           end_block_op);
             std::string temp_block_name = scope.current_func_ptr->get_koopa_var_name("%after_ret");

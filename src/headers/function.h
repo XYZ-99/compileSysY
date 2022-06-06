@@ -17,16 +17,11 @@ class FParam {
 public:
     std::string koopa_var_name;
     OperandType type;
+    FParam(std::string _name, OperandTypeEnum _type_enum): koopa_var_name(_name), type(_type_enum) { }
     FParam(std::string _name, OperandType _type): koopa_var_name(_name), type(_type) { }
     friend std::ostream& operator<<(std::ostream& out, const FParam& param) {
         out << param.koopa_var_name << ": ";
-        switch(param.type) {
-            case OperandType::INT:
-                out << "i32";
-                break;
-            default:
-                throw std::invalid_argument("When outputing FParam: Unrecognized param.tyoe.");
-        }
+        out << to_string(param.type);
         return out;
     }
 };
@@ -38,8 +33,23 @@ public:
     std::vector<OperandType> param_types;
 
     Signature(FuncType _type, std::string _ident, std::vector<OperandType> _param_types): func_type(_type),
-                                                                                          ident(_ident),
-                                                                                          param_types(_param_types) { }
+                                                                                              ident(_ident),
+                                                                                              param_types(_param_types) { }
+
+    friend std::ostream& operator<<(std::ostream& out, const Signature& signature) {
+        out << "@" << signature.ident << "(";
+        if (!signature.param_types.empty()) {
+            out << to_string(signature.param_types[0]);
+            for (auto i = 1; i < signature.param_types.size(); i++) {
+                out << ", " << to_string(signature.param_types[i]);
+            }
+        }
+        out << ")";
+        if (signature.func_type == FuncType::INT) {
+            out << ": i32";
+        }
+        return out;
+    }
 };
 
 class Function {
