@@ -42,11 +42,11 @@ using namespace std;
 %nonassoc ELSE
 
 // 非终结符的类型定义
-%type <ast_val> CompUnitItemList CompUnitItem FuncDef FuncFParamList FuncFParam FuncType
+%type <ast_val> CompUnitItemList CompUnitItem FuncDef FuncFParamList FuncFParam /*FuncType*/
 %type <ast_val> Decl ConstDecl ConstDef ConstDefList ConstInitVal VarDecl VarDefList VarDef
 %type <ast_val> InitVal BlockItem BlockItemList Block Stmt Exp UnaryExp FuncRParamList PrimaryExp MulExp
 %type <ast_val> AddExp RelExp EqExp LAndExp LOrExp ConstExp
-%type <str_val> AddOp MulOp LVal BType
+%type <str_val> AddOp MulOp LVal /*BType*/
 %type <int_val> Number UnaryOp
 
 %%
@@ -99,9 +99,9 @@ Decl
   ;
 
 ConstDecl
-  : CONST BType ConstDefList ';' {
+  : CONST INT ConstDefList ';' {
     auto ast = new ConstDeclAST();
-    ast->btype = "const " + *unique_ptr<string>($2);
+    ast->btype = "const " + string("int");
     ast->const_def_list_ast = unique_ptr<BaseAST>($3);
     $$ = ast;
   }
@@ -120,11 +120,11 @@ ConstDefList
   }
   ;
 
-BType
+/*BType
   : INT {
     $$ = new string("int");
   }
-  ;
+  ;*/
 
 ConstDef
   : IDENT '=' ConstInitVal {
@@ -144,9 +144,9 @@ ConstInitVal
   ;
 
 VarDecl
-  : BType VarDefList ';' {
+  : INT VarDefList ';' {
     auto ast = new VarDeclAST();
-    ast->btype = *unique_ptr<string>($1);
+    ast->btype = string("int");
     ast->var_def_list_ast = unique_ptr<BaseAST>($2);
     $$ = ast;
   }
@@ -187,20 +187,47 @@ InitVal
   }
   ;
 
+// We enumerate the possibilities for FuncType to avoid reduce-reduce conflicts with Decl!
 FuncDef
-  : FuncType IDENT '(' ')' Block {
+  : INT IDENT '(' ')' Block {
     auto ast = new FuncDefAST();  // Cannot type-cast if we use make_unique<FuncDefAST>(); and move(ast);
                                   // because $$ is BaseAST* instead of unique_ptr<BaseAST>
-    ast->func_type = unique_ptr<BaseAST>($1);
+    auto func_type_ast = new FuncTypeAST();
+    func_type_ast->type = string("int");
+    ast->func_type = unique_ptr<BaseAST>(func_type_ast);
     ast->ident = *unique_ptr<string>($2);
     ast->func_f_param_list_ast = unique_ptr<BaseAST>(new FuncFParamListAST());
     ast->block = unique_ptr<BaseAST>($5);
     $$ = ast;
   }
-  | FuncType IDENT '(' FuncFParamList ')' Block {
+  | INT IDENT '(' FuncFParamList ')' Block {
     auto ast = new FuncDefAST();  // Cannot type-cast if we use make_unique<FuncDefAST>(); and move(ast);
                                   // because $$ is BaseAST* instead of unique_ptr<BaseAST>
-    ast->func_type = unique_ptr<BaseAST>($1);
+    auto func_type_ast = new FuncTypeAST();
+    func_type_ast->type = string("int");
+    ast->func_type = unique_ptr<BaseAST>(func_type_ast);
+    ast->ident = *unique_ptr<string>($2);
+    ast->func_f_param_list_ast = unique_ptr<BaseAST>($4);
+    ast->block = unique_ptr<BaseAST>($6);
+    $$ = ast;
+  }
+  | VOID IDENT '(' ')' Block {
+    auto ast = new FuncDefAST();  // Cannot type-cast if we use make_unique<FuncDefAST>(); and move(ast);
+                                  // because $$ is BaseAST* instead of unique_ptr<BaseAST>
+    auto func_type_ast = new FuncTypeAST();
+    func_type_ast->type = string("void");
+    ast->func_type = unique_ptr<BaseAST>(func_type_ast);
+    ast->ident = *unique_ptr<string>($2);
+    ast->func_f_param_list_ast = unique_ptr<BaseAST>(new FuncFParamListAST());
+    ast->block = unique_ptr<BaseAST>($5);
+    $$ = ast;
+  }
+  | VOID IDENT '(' FuncFParamList ')' Block {
+    auto ast = new FuncDefAST();  // Cannot type-cast if we use make_unique<FuncDefAST>(); and move(ast);
+                                  // because $$ is BaseAST* instead of unique_ptr<BaseAST>
+    auto func_type_ast = new FuncTypeAST();
+    func_type_ast->type = string("void");
+    ast->func_type = unique_ptr<BaseAST>(func_type_ast);
     ast->ident = *unique_ptr<string>($2);
     ast->func_f_param_list_ast = unique_ptr<BaseAST>($4);
     ast->block = unique_ptr<BaseAST>($6);
@@ -223,15 +250,15 @@ FuncFParamList
   ;
 
 FuncFParam
-  : BType IDENT {
+  : INT IDENT {
     auto ast = new FuncFParamAST();
-    ast->btype = *unique_ptr<string>($1);
+    ast->btype = string("int");
     ast->ident = *unique_ptr<string>($2);
     $$ = ast;
   }
   ;
 
-FuncType
+/*FuncType
   : INT {
     auto ast = new FuncTypeAST();
     ast->type = string("int");
@@ -242,7 +269,7 @@ FuncType
     ast->type = string("void");
     $$ = ast;
   }
-  ;
+  ;*/
 
 Block
   : '{' BlockItemList '}' {

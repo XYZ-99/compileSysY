@@ -91,10 +91,10 @@ public:
             decl->DumpGlobalDecl(out);
         } else if (func_def != nullptr) {
             func_def->Dump(out);
+            out << std::endl;
         } else {
             throw std::invalid_argument("Both decl and func_def are nullptr(s)!");
         }
-        out << std::endl;
     }
 };
 
@@ -119,6 +119,7 @@ public:
             const_decl->DumpGlobalDecl(out);
         } else if (var_decl != nullptr) {
             var_decl->DumpGlobalDecl(out);
+            out << std::endl;
         } else {
             throw std::invalid_argument("DeclAST::DumpGlobalDecl: both members are nullptr!");
         }
@@ -233,7 +234,6 @@ public:
             } else {
                 out << "zeroinit";
             }
-            out << std::endl;
         } else {
             // e.g. store 10, @x
             if (init_val != nullptr) {
