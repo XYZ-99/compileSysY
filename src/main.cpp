@@ -9,8 +9,8 @@
 
 #include "koopa.h"
 #include "headers/ast.h"
-#include "headers/visit_raw_program.h"
-#include "headers/register.h"
+#include "headers/riscv/visit_raw_program.h"
+#include "headers/riscv/register.h"
 
 using namespace std;
 
