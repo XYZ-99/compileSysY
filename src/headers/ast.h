@@ -13,9 +13,15 @@
 #include "variable.h"
 #include "function.h"
 
-#define WHILE_ENTRY_BASENAME    "%while_entry"
-#define WHILE_BODY_BASENAME     "%while_body"
-#define END_WHILE_BASENAME      "%end_while"
+#define WHILE_ENTRY_BASENAME        "%while_entry"
+#define WHILE_BODY_BASENAME         "%while_body"
+#define END_WHILE_BASENAME          "%end_while"
+
+#define END_OR_BLOCK_BASENAME       "%end_or_block"
+#define OR_FALSE_BLOCK_BASENAME     "%or_false_block"
+#define AND_TRUE_BLOCK_BASENAME     "%and_true_block"
+#define END_AND_BLOCK_BASENAME      "%end_and_block"
+
 
 // 所有 AST 的基类
 class BaseAST {
@@ -234,6 +240,7 @@ public:
             } else {
                 out << "zeroinit";
             }
+            out << std::endl;
         } else {
             // e.g. store 10, @x
             if (init_val != nullptr) {
@@ -1096,36 +1103,61 @@ public:
     Operand DumpExp() const override {
         if (l_and_exp != nullptr) {
             // LAndExp ::= LAndExp "&&" EqExp;
+            std::string end_and_block_name = scope.current_func_ptr->get_koopa_var_name(END_AND_BLOCK_BASENAME);
+            std::string and_true_block_name = scope.current_func_ptr->get_koopa_var_name(AND_TRUE_BLOCK_BASENAME);
+            Operand end_and_block_op = Operand(end_and_block_name, OperandTypeEnum::BLOCK);
+            Operand and_true_block_op = Operand(and_true_block_name, OperandTypeEnum::BLOCK);
+
+            std::string result_ptr_str = "%and_" + std::to_string(temp_var++);
+            Operand result_ptr_op = Operand(result_ptr_str);  // TODO: 2: alloc var is a pointer in fact...
+            scope.current_func_ptr->append_alloc_to_entry_block(result_ptr_op);
+
             Operand lhs = l_and_exp->DumpExp();
+            std::string and_lhs_temp_var_str = "%" + std::to_string(temp_var++);
+            Operand and_lhs_temp_op = Operand(and_lhs_temp_var_str);
+            auto judge_lhs_instr = std::make_unique<Instruction>(OpType::NE,
+                                                                 and_lhs_temp_op,
+                                                                 lhs,
+                                                                 Operand(0));
+            scope.current_func_ptr->append_instr_to_current_block(std::move(judge_lhs_instr));
+            auto store_lhs_instr = std::make_unique<Instruction>(OpType::STORE,
+                                                                 and_lhs_temp_op,
+                                                                 result_ptr_op);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(store_lhs_instr));
+            auto br_on_lhs_instr = std::make_unique<Instruction>(OpType::BR,
+                                                                 and_lhs_temp_op,
+                                                                 and_true_block_name,
+                                                                 end_and_block_name);
+            scope.current_func_ptr->end_current_block_by_instr(std::move(br_on_lhs_instr),
+                                                               true,
+                                                               and_true_block_name);
+
+            // if lhs is true, begin eval rhs
             Operand rhs = eq_exp->DumpExp();
+            std::string and_rhs_temp_var_str = "%" + std::to_string(temp_var++);
+            Operand and_rhs_temp_op = Operand(and_rhs_temp_var_str);
+            auto judge_rhs_instr = std::make_unique<Instruction>(OpType::NE,
+                                                                 and_rhs_temp_op,
+                                                                 rhs,
+                                                                 Operand(0));
+            scope.current_func_ptr->append_instr_to_current_block(std::move(judge_rhs_instr));
+            auto store_rhs_instr = std::make_unique<Instruction>(OpType::STORE,
+                                                                 and_rhs_temp_op,
+                                                                 result_ptr_op);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(store_rhs_instr));
+            auto jump_to_end_and = std::make_unique<Instruction>(OpType::JUMP,
+                                                                 end_and_block_op);
+            scope.current_func_ptr->end_current_block_by_instr(std::move(jump_to_end_and),
+                                                               true,
+                                                               end_and_block_name);
 
-            // snez t0, t0
-            // snez t1, t1
-            // and  t0, t0, t1
-            std::string temp_var_lhs_str = "%" + std::to_string(temp_var++);
-            Operand temp_var_lhs = Operand(temp_var_lhs_str);
-            Operand zero = Operand(0);
-            auto instr0 = std::make_unique<Instruction>(OpType::NE,
-                                                        temp_var_lhs,
-                                                        lhs,
-                                                        zero);
-            scope.current_func_ptr->append_instr_to_current_block(std::move(instr0));
-
-            std::string temp_var_rhs_str = "%" + std::to_string(temp_var++);
-            Operand temp_var_rhs = Operand(temp_var_rhs_str);
-            auto instr1 = std::make_unique<Instruction>(OpType::NE,
-                                                        temp_var_rhs,
-                                                        rhs,
-                                                        zero);
-            scope.current_func_ptr->append_instr_to_current_block(std::move(instr1));
-
+            // Load the result
             std::string temp_var_str = "%" + std::to_string(temp_var++);
             Operand res = Operand(temp_var_str);
-            auto instr2 = std::make_unique<Instruction>(OpType::AND,
-                                                        res,
-                                                        temp_var_lhs,
-                                                        temp_var_rhs);
-            scope.current_func_ptr->append_instr_to_current_block(std::move(instr2));
+            auto load_res_instr = std::make_unique<Instruction>(OpType::LOAD,
+                                                                res,
+                                                                result_ptr_op);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(load_res_instr));
 
             return res;
         } else {
@@ -1160,28 +1192,65 @@ public:
     Operand DumpExp() const override {
         if (l_or_exp != nullptr) {
             // LOrExp ::= LOrExp "||" LAndExp;
+            std::string end_or_block_name = scope.current_func_ptr->get_koopa_var_name(END_OR_BLOCK_BASENAME);
+            std::string or_false_block_name = scope.current_func_ptr->get_koopa_var_name(OR_FALSE_BLOCK_BASENAME);
+            Operand end_or_block_op = Operand(end_or_block_name, OperandTypeEnum::BLOCK);
+            Operand or_false_block_op = Operand(or_false_block_name, OperandTypeEnum::BLOCK);
+
+            // int result = 1;
+            // if (lhs == 0) {
+            //   result = rhs != 0;
+            // }
+            std::string result_ptr_str = "%or_" + std::to_string(temp_var++);
+            Operand result_ptr_op = Operand(result_ptr_str);  // TODO: 2: alloc var is a pointer in fact...
+            scope.current_func_ptr->append_alloc_to_entry_block(result_ptr_op);
+
             Operand lhs = l_or_exp->DumpExp();
+            std::string or_lhs_temp_var_str = "%" + std::to_string(temp_var++);
+            Operand or_lhs_temp_op = Operand(or_lhs_temp_var_str);
+            auto judge_lhs_instr = std::make_unique<Instruction>(OpType::NE,
+                                                                 or_lhs_temp_op,
+                                                                 lhs,
+                                                                 Operand(0));
+            scope.current_func_ptr->append_instr_to_current_block(std::move(judge_lhs_instr));
+            auto store_lhs_instr = std::make_unique<Instruction>(OpType::STORE,
+                                                                 or_lhs_temp_op,
+                                                                 result_ptr_op);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(store_lhs_instr));
+            auto br_on_lhs_instr = std::make_unique<Instruction>(OpType::BR,
+                                                                   or_lhs_temp_op,
+                                                                   end_or_block_op,
+                                                                   or_false_block_op);
+            scope.current_func_ptr->end_current_block_by_instr(std::move(br_on_lhs_instr),
+                                                               true,
+                                                               or_false_block_name);
+
+            // if lhs is false, begin eval rhs
             Operand rhs = l_and_exp->DumpExp();
+            std::string or_rhs_temp_var_str = "%" + std::to_string(temp_var++);
+            Operand or_rhs_temp_op = Operand(or_rhs_temp_var_str);
+            auto judge_rhs_instr = std::make_unique<Instruction>(OpType::NE,
+                                                                 or_rhs_temp_op,
+                                                                 rhs,
+                                                                 Operand(0));
+            scope.current_func_ptr->append_instr_to_current_block(std::move(judge_rhs_instr));
+            auto store_rhs_instr = std::make_unique<Instruction>(OpType::STORE,
+                                                                 or_rhs_temp_op,
+                                                                 result_ptr_op);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(store_rhs_instr));
+            auto jump_to_end_or = std::make_unique<Instruction>(OpType::JUMP,
+                                                                end_or_block_op);
+            scope.current_func_ptr->end_current_block_by_instr(std::move(jump_to_end_or),
+                                                               true,
+                                                               end_or_block_name);
 
-            // or t0, t0, t1
-            // snez t0, t0
-            std::string temp_var_middle = "%" + std::to_string(temp_var++);
-            Operand temp_middle = Operand(temp_var_middle);
-            auto instr_0 = std::make_unique<Instruction>(OpType::OR,
-                                                         temp_middle,
-                                                         lhs,
-                                                         rhs);
-
-            scope.current_func_ptr->append_instr_to_current_block(std::move(instr_0));
-
+            // Load the result
             std::string temp_var_str = "%" + std::to_string(temp_var++);
             Operand res = Operand(temp_var_str);
-            Operand zero = Operand(0);
-            auto instr_1 = std::make_unique<Instruction>(OpType::NE,
-                                                         res,
-                                                         temp_middle,
-                                                         zero);
-            scope.current_func_ptr->append_instr_to_current_block(std::move(instr_1));
+            auto load_res_instr = std::make_unique<Instruction>(OpType::LOAD,
+                                                                res,
+                                                                result_ptr_op);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(load_res_instr));
 
             return res;
         } else {
