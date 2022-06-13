@@ -53,7 +53,7 @@ public:
             func_ptr->entry_block_ptr->instruction_lists.push_back(std::move(alloc_instr));
             // insert into the symbol table
             if (func_ptr->param_list[i].type.type_enum == OperandTypeEnum::INT) {
-                Variable var = Variable("int", temp_var_name);
+                Variable var = Variable(OperandTypeEnum::INT, false, temp_var_name);
                 insert_var(func_ptr->original_param_ident_list[i], var);
             } else {
                 throw std::invalid_argument("In alloc_and_store_for_params: the type is not int!");

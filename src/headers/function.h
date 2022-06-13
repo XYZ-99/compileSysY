@@ -159,6 +159,44 @@ public:
                                                    op);
         entry_block_ptr->instruction_lists.push_back(std::move(instr));
     }
+
+    void append_init_array(std::string koopa_var_name, OperandType op_type, std::shared_ptr<Array> arr_ptr,
+                           int& temp_var) {
+        switch(op_type.type_enum) {
+            case OperandTypeEnum::INT: {
+                switch(arr_ptr->contained_val.index()) {
+                    case 0: {
+                        auto val = arr_ptr->get_int();
+                        auto instr = std::make_unique<Instruction>(OpType::STORE,
+                                                                   Operand(val),
+                                                                   Operand(koopa_var_name, op_type, true));
+                        current_block_ptr->instruction_lists.push_back(std::move(instr));
+                    }
+                    default: {
+                        auto error = "Unhandled type of operand: " + std::to_string(arr_ptr->contained_val.index());
+                        throw std::invalid_argument(error);
+                    }
+                }
+            }
+            case OperandTypeEnum::ARRAY: {
+                for (size_t i = 0; i < op_type.array_len; i++) {
+                    auto temp_var_str = "%" + std::to_string(temp_var++);
+                    Operand elemptr_op = Operand(temp_var_str, *(op_type.pointed_type), true);
+                    auto instr = std::make_unique<Instruction>(OpType::GETELEMPTR,
+                                                               elemptr_op,
+                                                               Operand(koopa_var_name, op_type, true),
+                                                               int(i));
+                    current_block_ptr->instruction_lists.push_back(std::move(instr));
+                    auto sub_arr = arr_ptr->get_sub_arr();
+                    append_init_array(temp_var_str, *(op_type.pointed_type), sub_arr[i], temp_var);
+                }
+                break;
+            }
+            default: {
+                throw std::invalid_argument("In Function::append_init_array: unexpected OperandTypeEnum!");
+            }
+        }
+    }
 };
 
 #endif //COMPILER_FUNCTION_H

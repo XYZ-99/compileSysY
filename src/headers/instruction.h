@@ -8,8 +8,11 @@
 #include <variant>
 #include <string>
 #include <optional>
+#include <algorithm>
 
 enum class OpType {
+    GETELEMPTR,
+    GETPTR,
     BR,
     JUMP,
     RET,
@@ -37,12 +40,14 @@ enum class OperandTypeEnum {
     INT,
     BLOCK,
     POINTER,
+    ARRAY,
 };
 
 class OperandType {
 public:
     OperandTypeEnum type_enum;
     std::shared_ptr<OperandType> pointed_type;
+    size_t array_len;
 
     OperandType() { }
 
@@ -61,6 +66,31 @@ public:
         }
     }
 
+    std::vector<size_t> get_array_dim(bool reverse = true) const {
+        /* e.g., int[2][3][4] will give you a vector of:
+         * if reverse: {4, 3, 2}
+         * if !reverse: {2, 3, 4}
+         *
+         * When this is not an array at all, tihs method returns an empty vector.
+         */
+        std::vector<size_t> ret_vec;
+        auto op_type = *this;
+        while (op_type.type_enum == OperandTypeEnum::ARRAY) {
+            ret_vec.push_back(op_type.array_len);
+            op_type = *(op_type.pointed_type);
+        }
+        if (!reverse) {
+            std::reverse(ret_vec.begin(), ret_vec.end());
+        }
+        return ret_vec;
+    }
+
+    OperandType(size_t _array_len, const OperandType& _pointed_type) {
+        type_enum = OperandTypeEnum::ARRAY;
+        array_len = _array_len;
+        pointed_type = std::make_shared<OperandType>(_pointed_type);
+    }
+
     OperandType& operator=(const OperandTypeEnum& _type_enum) {
         type_enum = _type_enum;
         return *this;
@@ -75,6 +105,10 @@ public:
                 std::string pointed_type_str = to_string(*(type.pointed_type));
                 return "*" + pointed_type_str;
                 break;
+            }
+            case OperandTypeEnum::ARRAY: {
+                std::string pointed_type_str = to_string(*(type.pointed_type));
+                return "[" + pointed_type_str + ", " + std::to_string(type.array_len) + "]";
             }
             default:
                 int value = static_cast<int>(type.type_enum);
@@ -95,7 +129,15 @@ public:
     }
     Operand(std::string val, OperandTypeEnum _type_enum = OperandTypeEnum::INT): assoc_val(val), type(_type_enum) { }
 
-    Operand(std::string val, OperandType _type): assoc_val(val), type(_type) { }
+//    Operand(std::string val, OperandType _type): assoc_val(val), type(_type) { }
+
+    Operand(std::string val, OperandType _type, bool is_the_pointer_of_type = false): assoc_val(val) {
+        if (is_the_pointer_of_type) {
+            type = OperandType(OperandTypeEnum::POINTER, _type);
+        } else {
+            type = _type;
+        }
+    }
 
     friend std::ostream& operator<<(std::ostream& out, const Operand& op) {
         size_t idx = op.assoc_val.index();
@@ -152,6 +194,14 @@ public:
     friend std::ostream& operator<<(std::ostream& out, const Instruction& instr) {
         out << "  ";
         switch(instr.op_type) {
+            case OpType::GETELEMPTR: {
+                out << instr.t0 << " = getelemptr " << instr.t1 << ", " << instr.t2;
+                break;
+            }
+            case OpType::GETPTR: {
+                out << instr.t0 << " = getptr " << instr.t1 << ", " << instr.t2;
+                break;
+            }
             case OpType::BR: {
                 out << "br " << instr.t0 << ", " << instr.t1 << ", " << instr.t2;
                 break;
@@ -186,11 +236,7 @@ public:
                 break;
             }
             case OpType::ALLOC: {
-                if (instr.t0.value().type.type_enum == OperandTypeEnum::INT) {
-                    out << instr.t0 << " = alloc i32";
-                } else {
-                    throw std::invalid_argument("When output an alloc instr, the Operand type is not recognized!");
-                }
+                out << instr.t0 << " = alloc " << to_string(instr.t0.value().type);
                 break;
             }
             case OpType::LOAD: {

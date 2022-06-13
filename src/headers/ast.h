@@ -54,17 +54,18 @@ public:
     virtual void DumpGlobalDecl(std::ostream& out) const {
         throw std::invalid_argument("Used BaseAST DumpGlobalDecl!");
     }
-    inline static int temp_var = 0;  // TODO: search temp_var
+    virtual OperandType GetOperandType(std::ostream& out, std::string btype) const {
+        throw std::invalid_argument("Used BaseAST GetOperandType!");
+    }
+    virtual std::shared_ptr<Array> ComputeConstArrayVal(std::ostream& out) const {
+        throw std::invalid_argument("Used BaseAST ComputeConstArrayVal!");
+    }
+    virtual bool isExpInsteadOfList() const {
+        throw std::invalid_argument("Used BaseAST isExpInsteadOfList!");
+    }
+    inline static int temp_var = 0;
     static Scope scope;
 };
-
-//class VarDeclAST : public BaseAST {
-//public:
-//    void Dump(std::ostream& out) const override { }
-//    std::string DumpExp(int& temp_var_start, std::ostream& out) const override { return std::string(""); }
-//    void InsertSymbol(std::string btype, std::ostream& out) const override { }
-//    std::string ComputeConstVal(std::ostream& out) const override { return std::string(""); }
-//};
 
 // CompUnit 是 BaseAST
 class CompUnitAST : public BaseAST {
@@ -148,20 +149,81 @@ public:
 class ConstDefAST : public BaseAST {
 public:
     std::string ident;
+    std::unique_ptr<BaseAST> array_dim_list_ast;
     std::unique_ptr<BaseAST> const_init_val;
     void InsertSymbol(std::string btype, std::ostream& out, bool is_global) const override {
-        std::string computed_val = const_init_val->ComputeConstVal(out);
-        std::optional<int> const_init_val_int(std::stoi(computed_val));
-        std::string koopa_var_name;
-        if (is_global) {
-            koopa_var_name = "@" + ident;  // Assume that a global name will not repeat itself
+        if (array_dim_list_ast == nullptr) {
+            // ConstDefAST ::= IDENT '=' ConstInitVal
+            std::string computed_val = const_init_val->ComputeConstVal(out);
+            std::optional<int> const_init_val_int(std::stoi(computed_val));
+            std::string koopa_var_name;
+            if (is_global) {
+                koopa_var_name = "@" + ident;  // Assume that a global name will not repeat itself
+            } else {
+                koopa_var_name = scope.current_func_ptr->get_koopa_var_name(ident);
+            }
+            auto new_var = Variable(OperandTypeEnum::INT,
+                                    true,
+                                    koopa_var_name,
+                                    const_init_val_int);
+            scope.insert_var(ident, new_var);
         } else {
-            koopa_var_name = scope.current_func_ptr->get_koopa_var_name(ident);
+            // ConstDefAST ::= IDENT ArrayDimList '=' ConstInitVal;
+            std::string koopa_var_name;
+            if (is_global) {
+                koopa_var_name = "@" + ident;
+            } else {
+                koopa_var_name = scope.current_func_ptr->get_koopa_var_name(ident);
+            }
+            OperandType op_type = array_dim_list_ast->GetOperandType(out, btype);
+            std::shared_ptr<Array> array_ptr = const_init_val->ComputeConstArrayVal(out);
+            array_ptr = array_ptr->align_with_operand_type(op_type);
+
+            auto new_var = Variable(op_type,
+                                    true,
+                                    koopa_var_name,
+                                    std::nullopt,
+                                    array_ptr);
+            scope.insert_var(ident, new_var);
+
+            Operand alloc_op = Operand(koopa_var_name, op_type, true);
+            if (is_global) {
+                out << "global " << koopa_var_name << " = alloc " << to_string(op_type) << ", ";
+                std::shared_ptr<Array> array_ptr = const_init_val->ComputeConstArrayVal(out);
+                array_ptr = array_ptr->align_with_operand_type(op_type);
+                out << *array_ptr;
+                out << std::endl;
+            } else {
+                scope.current_func_ptr->append_alloc_to_entry_block(alloc_op);
+                std::shared_ptr<Array> array_ptr = const_init_val->ComputeConstArrayVal(out);
+                array_ptr = array_ptr->align_with_operand_type(op_type);
+                scope.current_func_ptr->append_init_array(koopa_var_name,
+                                                          op_type,
+                                                          array_ptr,
+                                                          temp_var);
+            }
         }
-        auto new_var = Variable(btype,
-                                koopa_var_name,
-                                const_init_val_int);
-        scope.insert_var(ident, new_var);
+    }
+};
+
+class ArrayDimListAST : public BaseAST {
+public:
+    std::vector<std::unique_ptr<BaseAST> > array_dim_list;
+    OperandType GetOperandType(std::ostream& out, std::string btype) const override {
+        size_t array_len = array_dim_list.size();
+        if (btype == "int") {
+            OperandType base_type {OperandTypeEnum::INT};
+            for (auto it = array_dim_list.rbegin();
+                    it != array_dim_list.rend();
+                    it++) {
+                std::string computed_val = (*it)->ComputeConstVal(out);
+                int val_int = std::stoi(computed_val);
+                base_type = OperandType(size_t(val_int), base_type);
+            }
+            return base_type;
+        } else {
+            throw std::invalid_argument("ArrayDimListAST::GetOperandType: Unrecognized btype: " + btype);
+        }
     }
 };
 
@@ -180,8 +242,33 @@ public:
 class ConstInitValAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> const_exp;
+    std::unique_ptr<BaseAST> const_init_val_list_ast;
     std::string ComputeConstVal(std::ostream& out) const override {
         return const_exp->ComputeConstVal(out);
+    }
+    std::shared_ptr<Array> ComputeConstArrayVal(std::ostream& out) const override {
+        return const_init_val_list_ast->ComputeConstArrayVal(out);
+    }
+    bool isExpInsteadOfList() const override {
+        return const_exp != nullptr;
+    }
+};
+
+class ConstInitValListAST : public BaseAST {
+public:
+    std::vector<std::unique_ptr<BaseAST> > const_init_val_list;
+    std::shared_ptr<Array> ComputeConstArrayVal(std::ostream& out) const override {
+        std::vector<std::shared_ptr<Array> > res_vec;
+        for (auto& ptr: const_init_val_list) {
+            // each of them is a ConstInitValAST
+            if (ptr->isExpInsteadOfList()) {
+                int val = std::stoi(ptr->ComputeConstVal(out));
+                res_vec.push_back(std::make_shared<Array>(val));
+            } else {
+                res_vec.push_back(ptr->ComputeConstArrayVal(out));
+            }
+        }
+        return std::make_shared<Array>(res_vec);
     }
 };
 
@@ -212,6 +299,7 @@ public:
 class VarDefAST : public BaseAST {
 public:
     std::string ident;
+    std::unique_ptr<BaseAST> array_dim_list_ast;
     std::unique_ptr<BaseAST> init_val;
     void InsertSymbol(std::string btype, std::ostream& out, bool is_global) const override {
         // e.g. @x = alloc i32
@@ -222,21 +310,33 @@ public:
         } else {
             koopa_var_name = "@" + scope.current_func_ptr->get_koopa_var_name(ident);
         }
-        Operand alloc_op = Operand(koopa_var_name);
+
+        OperandType op_type;
+        if (array_dim_list_ast != nullptr) {
+            op_type = array_dim_list_ast->GetOperandType(out, btype);
+        } else {
+            op_type = OperandTypeEnum::INT;
+        }
+        Operand alloc_op = Operand(koopa_var_name, op_type, true);  // TODO: 0: inspect other places
         if (is_global) {
-            // TODO: fix btype
-            out << "global " << koopa_var_name << " = alloc i32, ";
+            out << "global " << koopa_var_name << " = alloc " << to_string(op_type) << ", ";
         } else {
             scope.current_func_ptr->append_alloc_to_entry_block(alloc_op);
         }
 
-        auto new_var = Variable(btype, koopa_var_name);
+        auto new_var = Variable(op_type, false, koopa_var_name);
         scope.insert_var(ident, new_var);
 
         if (is_global) {
             if (init_val != nullptr) {
-                std::string init_val_str = init_val->ComputeConstVal(out);
-                out << init_val_str;
+                if (init_val->isExpInsteadOfList()) {
+                    std::string init_val_str = init_val->ComputeConstVal(out);
+                    out << init_val_str;
+                } else {
+                    std::shared_ptr<Array> array_ptr = init_val->ComputeConstArrayVal(out);
+                    array_ptr = array_ptr->align_with_operand_type(op_type);
+                    out << *array_ptr;
+                }
             } else {
                 out << "zeroinit";
             }
@@ -244,12 +344,21 @@ public:
         } else {
             // e.g. store 10, @x
             if (init_val != nullptr) {
-                Operand computed_init_val = init_val->ComputeInitVal();
-                Operand store_koopa_var = Operand(koopa_var_name);
-                auto instr = std::make_unique<Instruction>(OpType::STORE,
-                                                           computed_init_val,
-                                                           store_koopa_var);
-                scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
+                if (init_val->isExpInsteadOfList()) {
+                    Operand computed_init_val = init_val->ComputeInitVal();
+                    Operand store_koopa_var = Operand(koopa_var_name);
+                    auto instr = std::make_unique<Instruction>(OpType::STORE,
+                                                               computed_init_val,
+                                                               store_koopa_var);
+                    scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
+                } else {
+                    std::shared_ptr<Array> array_ptr = init_val->ComputeConstArrayVal(out);
+                    array_ptr = array_ptr->align_with_operand_type(op_type);
+                    scope.current_func_ptr->append_init_array(koopa_var_name,
+                                                              op_type,
+                                                              array_ptr,
+                                                              temp_var);
+                }
             }
         }
     }
@@ -258,12 +367,38 @@ public:
 class InitValAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
+    std::unique_ptr<BaseAST> init_val_list_ast;
     Operand ComputeInitVal() const override {
         return exp->DumpExp();
     }
     std::string ComputeConstVal(std::ostream& out) const override {
         // Only use for global decl
         return exp->ComputeConstVal(out);
+    }
+    std::shared_ptr<Array> ComputeConstArrayVal(std::ostream& out) const override {
+        // Assume that when initializing an array, all the values are const (can be computed at compiler time)
+        return init_val_list_ast->ComputeConstArrayVal(out);
+    }
+    bool isExpInsteadOfList() const override {
+        return exp != nullptr;
+    }
+};
+
+class InitValListAST : public BaseAST {
+public:
+    std::vector<std::unique_ptr<BaseAST> > init_val_list;
+    std::shared_ptr<Array> ComputeConstArrayVal(std::ostream& out) const override {
+        std::vector<std::shared_ptr<Array> > res_vec;
+        for (auto& ptr: init_val_list) {
+            // each of them is a InitValAST
+            if (ptr->isExpInsteadOfList()) {
+                int val = std::stoi(ptr->ComputeConstVal(out));
+                res_vec.push_back(std::make_shared<Array>(val));
+            } else {
+                res_vec.push_back(ptr->ComputeConstArrayVal(out));
+            }
+        }
+        return std::make_shared<Array>(res_vec);
     }
 };
 
@@ -382,7 +517,6 @@ public:
 class FuncTypeAST : public BaseAST {
 public:
     std::string type;
-    // TODO: Directly assign type: sysy.y: FuncType
     void Dump(std::ostream& out) const override {
         if (type == "int") {
             out << "i32";
@@ -758,7 +892,17 @@ public:
     }
 };
 
-// TODO: LValAST: for multi-dimensional arrays
+class LValAST : public BaseAST {
+public:
+    // TODO: 0: search for how they use lval
+    std::string ident;
+    std::unique_ptr<BaseAST> array_var_dim_list_ast;
+};
+
+class ArrayVarDimListAST : public BaseAST {
+public:
+    std::vector<std::unique_ptr<BaseAST> > exp_list;
+};
 
 class PrimaryExpAST : public BaseAST {
 public:
@@ -772,10 +916,10 @@ public:
             ret_op = exp->DumpExp();
         } else if (!l_val.empty()) {
             const Variable& var = scope.get_var_by_ident(l_val);
-            if (var.type == "const int") {
+            if (var.is_const && var.type.type_enum == OperandTypeEnum::INT) {
                 assert(var.const_val);  // the const_val must have been computed
                 ret_op = Operand(var.const_val.value());
-            } else if (var.type == "int") {
+            } else if (var.type.type_enum == OperandTypeEnum::INT) {
                 std::string temp_var_str = "%" + std::to_string(temp_var);
                 ret_op = Operand(temp_var_str);
                 temp_var++;
@@ -784,8 +928,7 @@ public:
                                                            Operand(var.koopa_var_name));
                 scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
             } else {
-                std::string error_info = "PrimaryExpAST(DumpExp): unexpected lval type: ";
-                error_info = error_info + var.type;
+                std::string error_info = "PrimaryExpAST(DumpExp): unexpected lval type!";
                 throw std::invalid_argument(error_info);
             }
         } else if (number != nullptr) {
@@ -801,13 +944,12 @@ public:
             ret_str = exp->ComputeConstVal(out);
         } else if (!l_val.empty()) {
             const Variable& var = scope.get_var_by_ident(l_val);
-            if (var.type == "const int") {
+            if (var.type.type_enum == OperandTypeEnum::INT && var.is_const) {
                 assert(var.const_val);  // the const_val must have been computed
                 ret_str = std::to_string(var.const_val.value());
             } else {
                 // Since we're computing ConstVal, var cannot be used
-                std::string error_info = "PrimaryExpAST(ComputeConstVal): unexpected lval type: ";
-                error_info = error_info + var.type;
+                std::string error_info = "PrimaryExpAST(ComputeConstVal): unexpected lval type!";
                 throw std::invalid_argument(error_info);
             }
         } else if (number != nullptr) {

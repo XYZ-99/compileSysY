@@ -43,10 +43,11 @@ using namespace std;
 
 // 非终结符的类型定义
 %type <ast_val> CompUnitItemList CompUnitItem FuncDef FuncFParamList FuncFParam /*FuncType*/
-%type <ast_val> Decl ConstDecl ConstDef ConstDefList ConstInitVal VarDecl VarDefList VarDef
-%type <ast_val> InitVal BlockItem BlockItemList Block Stmt Exp UnaryExp FuncRParamList PrimaryExp MulExp
-%type <ast_val> AddExp RelExp EqExp LAndExp LOrExp ConstExp
-%type <str_val> AddOp MulOp LVal /*BType*/
+%type <ast_val> Decl ConstDecl ConstDef ArrayDimList ConstDefList ConstInitVal ConstInitValList VarDecl
+%type <ast_val> VarDefList VarDef InitVal InitValList ArrayVarDimList
+%type <ast_val> BlockItem BlockItemList Block Stmt Exp UnaryExp FuncRParamList PrimaryExp MulExp
+%type <ast_val> AddExp RelExp EqExp LAndExp LOrExp ConstExp LVal  // TODO: 0: change wherever LVal occurs
+%type <str_val> AddOp MulOp /*BType*/
 %type <int_val> Number UnaryOp
 
 %%
@@ -133,12 +134,54 @@ ConstDef
     ast->const_init_val = unique_ptr<BaseAST>($3);
     $$ = ast;
   }
+  | IDENT ArrayDimList '=' ConstInitVal {
+    auto ast = new ConstDefAST();
+    ast->ident = *unique_ptr<string>($1);
+    ast->array_dim_list_ast = unique_ptr<BaseAST>($2);
+    ast->const_init_val = unique_ptr<BaseAST>($4);
+    $$ = ast;
+  }
+  ;
+
+ArrayDimList
+  : '[' ConstExp ']' {
+    auto ast = new ArrayDimListAST();
+    ast->array_dim_list.push_back(unique_ptr<BaseAST>($2));
+    $$ = ast;
+  }
+  | ArrayDimList '[' ConstExp ']' {
+    auto ast = (ArrayDimListAST*)($1);
+    ast->array_dim_list.push_back(unique_ptr<BaseAST>($3));
+    $$ = ast;
+  }
   ;
 
 ConstInitVal
   : ConstExp {
     auto ast = new ConstInitValAST();
     ast->const_exp = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  | '{' ConstInitValList '}' {
+    auto ast = new ConstInitValAST();
+    ast->const_init_val_list_ast = unique_ptr<BaseAST>($2);
+    $$ = ast;
+  }
+  | '{' '}' {
+    auto ast = new ConstInitValAST();
+    $$ = ast;
+  }
+  ;
+
+ConstInitValList
+  : ConstInitVal {
+    auto ast = new ConstInitValListAST();
+    ast->const_init_val_list.push_back(unique_ptr<BaseAST>($1));
+    $$ = ast;
+  }
+  | ConstInitValList ',' ConstInitVal {
+    auto ast = (ConstInitValListAST*)($1);
+    ast->const_init_val_list.push_back(unique_ptr<BaseAST>($3));
     $$ = ast;
   }
   ;
@@ -177,12 +220,47 @@ VarDef
     ast->init_val = unique_ptr<BaseAST>($3);
     $$ = ast;
   }
+  | IDENT ArrayDimList {
+    auto ast = new VarDefAST();
+    ast->ident = *unique_ptr<string>($1);
+    ast->array_dim_list_ast = unique_ptr<BaseAST>($2);
+    $$ = ast;
+  }
+  | IDENT ArrayDimList '=' InitVal {
+    auto ast = new VarDefAST();
+    ast->ident = *unique_ptr<string>($1);
+    ast->array_dim_list_ast = unique_ptr<BaseAST>($2);
+    ast->init_val = unique_ptr<BaseAST>($4);
+    $$ = ast;
+  }
   ;
 
 InitVal
   : Exp {
     auto ast = new InitValAST();
     ast->exp = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  | '{' '}' {
+    auto ast = new InitValAST();
+    $$ = ast;
+  }
+  | '{' InitValList '}' {
+    auto ast = new InitValAST();
+    ast->init_val_list_ast = unique_ptr<BaseAST>($2);
+    $$ = ast;
+  }
+  ;
+
+InitValList
+  : Exp {
+    auto ast = InitValListAST();
+    ast->init_val_list.push_back(unique_ptr<BaseAST>($1));
+    $$ = ast;
+  }
+  | InitValList ',' Exp {
+    auto ast = (InitValListAST*)($1);
+    ast->init_val_list.push_back(unique_ptr<BaseAST>($3));
     $$ = ast;
   }
   ;
@@ -308,7 +386,28 @@ BlockItem
 
 LVal
   : IDENT {
+    auto ast = LValAST();
+    ast->ident = *unique_ptr<string>($1);
     $$ = $1;
+  }
+  | IDENT ArrayVarDimList {
+    auto ast = LValAST();
+    ast->ident = *unique_ptr<string>($1);
+    ast->array_var_dim_list_ast = unique_ptr<BaseAST>($3);
+    $$ = ast;
+  }
+  ;
+
+ArrayVarDimList
+  : '[' Exp ']' {
+    auto ast = ArrayVarDimListAST();
+    ast->exp_list.push_back(unique_ptr<BaseAST>($2));
+    $$ = ast;
+  }
+  | ArrayVarDimList '[' Exp ']' {
+    auto ast = (ArrayVarDimListAST*)($1);
+    ast->exp_list.push_back(unique_ptr<BaseAST>($3));
+    $$ = ast;
   }
   ;
 
