@@ -179,7 +179,7 @@ public:
             if (is_global) {
                 koopa_var_name = "@" + ident;
             } else {
-                koopa_var_name = scope.current_func_ptr->get_koopa_var_name(ident);
+                koopa_var_name = "@" + scope.current_func_ptr->get_koopa_var_name(ident);
             }
             OperandType op_type = array_dim_list_ast->GetOperandType(out, btype);
             std::shared_ptr<Array> array_ptr = const_init_val->ComputeConstArrayVal(out);
@@ -252,7 +252,11 @@ public:
         return const_exp->ComputeConstVal(out);
     }
     std::shared_ptr<Array> ComputeConstArrayVal(std::ostream& out) const override {
-        return const_init_val_list_ast->ComputeConstArrayVal(out);
+        if (const_init_val_list_ast != nullptr) {
+            return const_init_val_list_ast->ComputeConstArrayVal(out);
+        } else {
+            return std::make_shared<Array>(std::vector<std::shared_ptr<Array> >());
+        }
     }
     bool isExpInsteadOfList() const override {
         return const_exp != nullptr;
@@ -322,7 +326,7 @@ public:
         } else {
             op_type = OperandTypeEnum::INT;
         }
-        Operand alloc_op = Operand(koopa_var_name, op_type, true);  // TODO: 0: inspect other places
+        Operand alloc_op = Operand(koopa_var_name, op_type, true);
         if (is_global) {
             out << "global " << koopa_var_name << " = alloc " << to_string(op_type) << ", ";
         } else {
@@ -351,7 +355,7 @@ public:
             if (init_val != nullptr) {
                 if (init_val->isExpInsteadOfList()) {
                     Operand computed_init_val = init_val->ComputeInitVal();
-                    Operand store_koopa_var = Operand(koopa_var_name);
+                    Operand store_koopa_var = Operand(koopa_var_name, OperandTypeEnum::INT, true);
                     auto instr = std::make_unique<Instruction>(OpType::STORE,
                                                                computed_init_val,
                                                                store_koopa_var);
@@ -382,7 +386,11 @@ public:
     }
     std::shared_ptr<Array> ComputeConstArrayVal(std::ostream& out) const override {
         // Assume that when initializing an array, all the values are const (can be computed at compiler time)
-        return init_val_list_ast->ComputeConstArrayVal(out);
+        if (init_val_list_ast != nullptr) {
+            return init_val_list_ast->ComputeConstArrayVal(out);
+        } else {
+            return std::make_shared<Array>(std::vector<std::shared_ptr<Array> >());
+        }
     }
     bool isExpInsteadOfList() const override {
         return exp != nullptr;
@@ -908,13 +916,7 @@ public:
             assert(var.const_val);  // the const_val must have been computed
             ret_op = Operand(var.const_val.value());
         } else if (var.type.type_enum == OperandTypeEnum::INT) {
-            std::string temp_var_str = "%" + std::to_string(temp_var);
-            ret_op = Operand(temp_var_str);
-            temp_var++;
-            auto instr = std::make_unique<Instruction>(OpType::LOAD,
-                                                       ret_op,
-                                                       Operand(var.koopa_var_name));
-            scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
+            ret_op = Operand(var.koopa_var_name, var.type, true);
         } else if (var.type.type_enum == OperandTypeEnum::ARRAY) {
             if (array_var_dim_list_ast == nullptr) {
                 throw std::invalid_argument("LValAST::DumpExp: The type indicates l_val is an array, but the expression gives no indices!");
@@ -943,6 +945,11 @@ public:
                 scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
             }
             ret_op = elem_op;
+//            ret_op = Operand("%" + std::to_string(temp_var++));
+//            auto load_instr = std::make_unique<Instruction>(OpType::LOAD,
+//                                                       ret_op,
+//                                                       elem_op);
+//            scope.current_func_ptr->append_instr_to_current_block(std::move(load_instr));
         } else {
             std::string error_info = "PrimaryExpAST(DumpExp): unexpected lval type!";
             throw std::invalid_argument(error_info);
@@ -988,7 +995,17 @@ public:
         if (exp != nullptr) {
             ret_op = exp->DumpExp();
         } else if (l_val != nullptr) {
-            ret_op = l_val->DumpExp();
+            Operand ret_ptr_op = l_val->DumpExp();
+            if (ret_ptr_op.type.type_enum != OperandTypeEnum::INT) {
+                auto temp_var_str = "%" + std::to_string(temp_var++);
+                ret_op = Operand(temp_var_str);  // type: INT
+                auto instr = std::make_unique<Instruction>(OpType::LOAD,
+                                                           ret_op,
+                                                           ret_ptr_op);
+                scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
+            } else {
+                ret_op = ret_ptr_op;
+            }
         } else if (number != nullptr) {
             ret_op = Operand(*number);
         } else {
@@ -1301,7 +1318,7 @@ public:
             Operand and_true_block_op = Operand(and_true_block_name, OperandTypeEnum::BLOCK);
 
             std::string result_ptr_str = "%and_" + std::to_string(temp_var++);
-            Operand result_ptr_op = Operand(result_ptr_str);  // TODO: 2: alloc var is a pointer in fact...
+            Operand result_ptr_op = Operand(result_ptr_str, OperandTypeEnum::INT, true);
             scope.current_func_ptr->append_alloc_to_entry_block(result_ptr_op);
 
             Operand lhs = l_and_exp->DumpExp();
@@ -1394,7 +1411,7 @@ public:
             //   result = rhs != 0;
             // }
             std::string result_ptr_str = "%or_" + std::to_string(temp_var++);
-            Operand result_ptr_op = Operand(result_ptr_str);  // TODO: 2: alloc var is a pointer in fact...
+            Operand result_ptr_op = Operand(result_ptr_str, OperandTypeEnum::INT, true);
             scope.current_func_ptr->append_alloc_to_entry_block(result_ptr_op);
 
             Operand lhs = l_or_exp->DumpExp();

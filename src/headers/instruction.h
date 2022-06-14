@@ -236,7 +236,7 @@ public:
                 break;
             }
             case OpType::ALLOC: {
-                out << instr.t0 << " = alloc " << to_string(instr.t0.value().type);
+                out << instr.t0 << " = alloc " << to_string(*(instr.t0.value().type.pointed_type));
                 break;
             }
             case OpType::LOAD: {

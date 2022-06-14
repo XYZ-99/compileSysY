@@ -65,7 +65,7 @@ public:
         std::string entry_name = get_koopa_var_name("%entry");
         entry_block_ptr = std::make_unique<BasicBlock>(entry_name);
         std::string ret_var_name = get_koopa_var_name("%ret");
-        ret_var_op = Operand(ret_var_name);
+        ret_var_op = Operand(ret_var_name, OperandTypeEnum::INT, true);
         if (func_type == FuncType::INT) {
             auto alloc_ret = std::make_unique<Instruction>(OpType::ALLOC,
                                                            ret_var_op.value());
@@ -178,6 +178,7 @@ public:
                         throw std::invalid_argument(error);
                     }
                 }
+                break;
             }
             case OperandTypeEnum::ARRAY: {
                 for (size_t i = 0; i < op_type.array_len; i++) {

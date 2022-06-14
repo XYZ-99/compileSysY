@@ -253,12 +253,12 @@ InitVal
   ;
 
 InitValList
-  : Exp {
+  : InitVal {
     auto ast = new InitValListAST();
     ast->init_val_list.push_back(unique_ptr<BaseAST>($1));
     $$ = ast;
   }
-  | InitValList ',' Exp {
+  | InitValList ',' InitVal {
     auto ast = (InitValListAST*)($1);
     ast->init_val_list.push_back(unique_ptr<BaseAST>($3));
     $$ = ast;
