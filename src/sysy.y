@@ -334,6 +334,21 @@ FuncFParam
     ast->ident = *unique_ptr<string>($2);
     $$ = ast;
   }
+  | INT IDENT '[' ']' {
+    auto ast = new FuncFParamAST();
+    ast->btype = string("int");
+    ast->ident = *unique_ptr<string>($2);
+    ast->is_pointer = true;
+    $$ = ast;
+  }
+  | INT IDENT '[' ']' ArrayDimList {
+    auto ast = new FuncFParamAST();
+    ast->btype = string("int");
+    ast->ident = *unique_ptr<string>($2);
+    ast->is_pointer = true;
+    ast->array_dim_list_ast = unique_ptr<BaseAST>($5);
+    $$ = ast;
+  }
   ;
 
 /*FuncType
@@ -476,6 +491,11 @@ Stmt
   | RETURN Exp ';' {
     auto ast = new StmtAST();
     ast->exp = unique_ptr<BaseAST>($2);
+    ast->type = StmtType::RET_EXP;
+    $$ = ast;
+  }
+  | RETURN ';' {
+    auto ast = new StmtAST();
     ast->type = StmtType::RET_EXP;
     $$ = ast;
   }

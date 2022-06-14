@@ -47,19 +47,18 @@ public:
         for (auto i = 0; i < func_ptr->param_list.size(); i++) {
             // alloc
             std::string temp_var_name = "@" + func_ptr->get_koopa_var_name(func_ptr->original_param_ident_list[i]);
-            Operand alloc_op = Operand(temp_var_name);
+            Operand alloc_op = Operand(temp_var_name,
+                                       func_ptr->param_list[i].type,
+                                       true);
             auto alloc_instr = std::make_unique<Instruction>(OpType::ALLOC,
                                                              alloc_op);
             func_ptr->entry_block_ptr->instruction_lists.push_back(std::move(alloc_instr));
             // insert into the symbol table
-            if (func_ptr->param_list[i].type.type_enum == OperandTypeEnum::INT) {
-                Variable var = Variable(OperandTypeEnum::INT, false, temp_var_name);
-                insert_var(func_ptr->original_param_ident_list[i], var);
-            } else {
-                throw std::invalid_argument("In alloc_and_store_for_params: the type is not int!");
-            }
+            Variable var = Variable(func_ptr->param_list[i].type, false, temp_var_name);
+            insert_var(func_ptr->original_param_ident_list[i], var);
             // store
-            Operand param_op = Operand(func_ptr->param_list[i].koopa_var_name);
+            Operand param_op = Operand(func_ptr->param_list[i].koopa_var_name,
+                                       func_ptr->param_list[i].type);
             auto store_instr = std::make_unique<Instruction>(OpType::STORE,
                                                              param_op,
                                                              alloc_op);

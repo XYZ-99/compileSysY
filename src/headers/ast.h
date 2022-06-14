@@ -515,15 +515,25 @@ class FuncFParamAST : public BaseAST {
 public:
     std::string btype;
     std::string ident;
+    bool is_pointer;
+    std::unique_ptr<BaseAST> array_dim_list_ast;
     void DumpInstructions() const override {
-        if (btype == "int") {
-            std::string temp_var_name = "%" + std::to_string(temp_var++);
-            FParam param = FParam(temp_var_name, OperandTypeEnum::INT);
-            scope.current_func_ptr->param_list.push_back(param);
-            scope.current_func_ptr->original_param_ident_list.push_back(ident);
+        std::string temp_var_name = "%" + std::to_string(temp_var++);
+        OperandType op_type;
+        if (!is_pointer) {
+            // INT IDENT
+            op_type = OperandTypeEnum::INT;
+        } else if (array_dim_list_ast == nullptr) {
+            // INT IDENT '[' ']'
+            op_type = OperandType(OperandTypeEnum::POINTER, OperandTypeEnum::INT);
         } else {
-            throw std::invalid_argument("In FuncFParamAST: not recognized btype: " + btype);
+            // INT IDENT '[' ']' ArrayDimList
+            op_type = array_dim_list_ast->GetOperandType(std::cout, btype);  // the std::cout is just a dummy input
+            op_type = OperandType(OperandTypeEnum::POINTER, op_type);
         }
+        FParam param = FParam(temp_var_name, op_type);
+        scope.current_func_ptr->param_list.push_back(param);
+        scope.current_func_ptr->original_param_ident_list.push_back(ident);
     }
 };
 
@@ -919,7 +929,7 @@ public:
             ret_op = Operand(var.koopa_var_name, var.type, true);
         } else if (var.type.type_enum == OperandTypeEnum::ARRAY) {
             if (array_var_dim_list_ast == nullptr) {
-                throw std::invalid_argument("LValAST::DumpExp: The type indicates l_val is an array, but the expression gives no indices!");
+                return Operand(var.koopa_var_name, var.type, true);
             }
             OperandType op_type = var.type;
             auto& exp_list = array_var_dim_list_ast->GetVector();
@@ -941,6 +951,41 @@ public:
                 auto instr = std::make_unique<Instruction>(OpType::GETELEMPTR,
                                                            elem_op,
                                                            base_op,
+                                                           exp_op);
+                scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
+            }
+            ret_op = elem_op;
+        } else if (var.type.type_enum == OperandTypeEnum::POINTER) {
+            OperandType op_type = var.type;
+
+            // if it is a pointer, there must be at least one dim
+            Operand ptr_ptr = Operand(var.koopa_var_name, var.type, true);
+            auto temp_var0_str = "%" + std::to_string(temp_var++);
+            Operand ptr_to_arr = Operand(temp_var0_str, *(op_type.pointed_type));
+            auto load_instr = std::make_unique<Instruction>(OpType::LOAD,
+                                                            ptr_to_arr,
+                                                            ptr_ptr);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(load_instr));
+            if (array_var_dim_list_ast == nullptr) {
+                return ptr_to_arr;
+            }
+            auto& exp_list = array_var_dim_list_ast->GetVector();
+            Operand exp_op = exp_list[0]->DumpExp();
+            auto temp_var_str = "%" + std::to_string(temp_var++);
+            Operand elem_op = Operand(temp_var_str, ptr_to_arr.type, true);  // getptr returns the same type
+            auto get_ptr_instr = std::make_unique<Instruction>(OpType::GETPTR,
+                                                               elem_op,
+                                                               ptr_to_arr,
+                                                               exp_op);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(get_ptr_instr));
+            for (size_t i = 1; i < exp_list.size(); i++) {
+                ptr_to_arr = elem_op;
+                exp_op = exp_list[i]->DumpExp();
+                temp_var_str = "%" + std::to_string(temp_var++);
+                elem_op = Operand(temp_var_str, *(ptr_to_arr.type.pointed_type->pointed_type), true);
+                auto instr = std::make_unique<Instruction>(OpType::GETELEMPTR,
+                                                           elem_op,
+                                                           ptr_to_arr,
                                                            exp_op);
                 scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
             }
@@ -991,15 +1036,27 @@ public:
             ret_op = exp->DumpExp();
         } else if (l_val != nullptr) {
             Operand ret_ptr_op = l_val->DumpExp();
-            if (ret_ptr_op.type.type_enum != OperandTypeEnum::INT) {
+            if (ret_ptr_op.type.type_enum != OperandTypeEnum::INT &&
+            ret_ptr_op.type.pointed_type->type_enum == OperandTypeEnum::INT) {
                 auto temp_var_str = "%" + std::to_string(temp_var++);
                 ret_op = Operand(temp_var_str);  // type: INT
                 auto instr = std::make_unique<Instruction>(OpType::LOAD,
                                                            ret_op,
                                                            ret_ptr_op);
                 scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
-            } else {
+            } else if (ret_ptr_op.type.type_enum != OperandTypeEnum::INT &&
+            ret_ptr_op.type.pointed_type->type_enum == OperandTypeEnum::ARRAY) {
+                auto temp_var_str = "%" + std::to_string(temp_var++);
+                ret_op = Operand(temp_var_str, *(ret_ptr_op.type.pointed_type->pointed_type), true);
+                auto get_elem_instr = std::make_unique<Instruction>(OpType::GETELEMPTR,
+                                                                    ret_op,
+                                                                    ret_ptr_op,
+                                                                    Operand(0));
+                scope.current_func_ptr->append_instr_to_current_block(std::move(get_elem_instr));
+            } else if (ret_ptr_op.type.type_enum == OperandTypeEnum::INT) {
                 ret_op = ret_ptr_op;
+            } else {
+                throw std::invalid_argument("Primary::DumpExp: Unrecognized type of ret_ptr_op!");
             }
         } else if (number != nullptr) {
             ret_op = Operand(*number);
