@@ -34,16 +34,6 @@ public:
         const_val = other.const_val;
         const_array = other.const_array;
     }
-
-//    bool operator==(Variable& other) const {
-//        if (this->type == other.type &&
-//            this->koopa_var_name == other.koopa_var_name) {
-//            if (const_val && other.const_val) {
-//                return const_val.value() == other.const_val.value();
-//            }
-//        }
-//        return false;
-//    }  TODO: 2: delete dead code
 };
 
 #endif //COMPILER_VARIABLE_H

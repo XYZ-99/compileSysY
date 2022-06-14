@@ -945,11 +945,6 @@ public:
                 scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
             }
             ret_op = elem_op;
-//            ret_op = Operand("%" + std::to_string(temp_var++));
-//            auto load_instr = std::make_unique<Instruction>(OpType::LOAD,
-//                                                       ret_op,
-//                                                       elem_op);
-//            scope.current_func_ptr->append_instr_to_current_block(std::move(load_instr));
         } else {
             std::string error_info = "PrimaryExpAST(DumpExp): unexpected lval type!";
             throw std::invalid_argument(error_info);
