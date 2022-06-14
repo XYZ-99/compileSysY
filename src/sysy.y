@@ -102,7 +102,7 @@ Decl
 ConstDecl
   : CONST INT ConstDefList ';' {
     auto ast = new ConstDeclAST();
-    ast->btype = "const " + string("int");
+    ast->btype = string("int");
     ast->const_def_list_ast = unique_ptr<BaseAST>($3);
     $$ = ast;
   }
@@ -254,7 +254,7 @@ InitVal
 
 InitValList
   : Exp {
-    auto ast = InitValListAST();
+    auto ast = new InitValListAST();
     ast->init_val_list.push_back(unique_ptr<BaseAST>($1));
     $$ = ast;
   }
@@ -386,21 +386,21 @@ BlockItem
 
 LVal
   : IDENT {
-    auto ast = LValAST();
+    auto ast = new LValAST();
     ast->ident = *unique_ptr<string>($1);
-    $$ = $1;
+    $$ = ast;
   }
   | IDENT ArrayVarDimList {
-    auto ast = LValAST();
+    auto ast = new LValAST();
     ast->ident = *unique_ptr<string>($1);
-    ast->array_var_dim_list_ast = unique_ptr<BaseAST>($3);
+    ast->array_var_dim_list_ast = unique_ptr<BaseAST>($2);
     $$ = ast;
   }
   ;
 
 ArrayVarDimList
   : '[' Exp ']' {
-    auto ast = ArrayVarDimListAST();
+    auto ast = new ArrayVarDimListAST();
     ast->exp_list.push_back(unique_ptr<BaseAST>($2));
     $$ = ast;
   }
@@ -419,7 +419,7 @@ ArrayVarDimList
 Stmt
   : LVal '=' Exp ';' {
     auto ast = new StmtAST();
-    ast->l_val = *unique_ptr<string>($1);
+    ast->l_val = unique_ptr<BaseAST>($1);
     ast->type = StmtType::ASSIGN;
     ast->exp = unique_ptr<BaseAST>($3);
     $$ = ast;
@@ -497,7 +497,7 @@ PrimaryExp
   }
   | LVal {
     auto ast = new PrimaryExpAST();
-    ast->l_val = *unique_ptr<string>($1);
+    ast->l_val = unique_ptr<BaseAST>($1);
     $$ = ast;
   }
   | Number {

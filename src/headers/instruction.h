@@ -71,7 +71,7 @@ public:
          * if reverse: {4, 3, 2}
          * if !reverse: {2, 3, 4}
          *
-         * When this is not an array at all, tihs method returns an empty vector.
+         * When this is not an array at all, this method returns an empty vector.
          */
         std::vector<size_t> ret_vec;
         auto op_type = *this;
@@ -79,7 +79,7 @@ public:
             ret_vec.push_back(op_type.array_len);
             op_type = *(op_type.pointed_type);
         }
-        if (!reverse) {
+        if (reverse) {
             std::reverse(ret_vec.begin(), ret_vec.end());
         }
         return ret_vec;

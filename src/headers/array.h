@@ -59,7 +59,7 @@ class Array {
         }
         return std::move(buffer.back().back());
     }
-    std::shared_ptr<Array> aggregate(std::vector<std::vector<std::shared_ptr<Array> > >& buffer,
+    void aggregate(std::vector<std::vector<std::shared_ptr<Array> > >& buffer,
                                      std::vector<size_t>& reversed_lens) {
         for (size_t i = 0; i < reversed_lens.size(); i++) {
             if (buffer[i].size() == reversed_lens[i]) {
@@ -113,10 +113,12 @@ public:
             case 0: {
                 // int
                 out << a.get_int();
+                break;
             }
             case 1: {
                 // str
                 out << a.get_str();
+                break;
             }
             case 2: {
                 // Array!
@@ -127,6 +129,7 @@ public:
                     out << ", " << *(sub_arr[i]);
                 }
                 out << "}";
+                break;
             }
         }
         return out;

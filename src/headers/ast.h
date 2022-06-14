@@ -45,6 +45,9 @@ public:
     virtual std::vector<Operand> DumpRParams() const {
         throw std::invalid_argument("Used BaseAST DumpRParams!");
     }
+    virtual std::vector<std::unique_ptr<BaseAST> >& GetVector() {
+        throw std::invalid_argument("Used BaseAST DumpRParams!");
+    }
     virtual Operand ComputeInitVal() const {
         throw std::invalid_argument("Used BaseAST ComputeInitVal!");
     }
@@ -162,6 +165,9 @@ public:
             } else {
                 koopa_var_name = scope.current_func_ptr->get_koopa_var_name(ident);
             }
+            // The type of Variable matches SysY.
+            // So even if the operand is actually a pointer,
+            // the var is a pointed type.
             auto new_var = Variable(OperandTypeEnum::INT,
                                     true,
                                     koopa_var_name,
@@ -210,7 +216,6 @@ class ArrayDimListAST : public BaseAST {
 public:
     std::vector<std::unique_ptr<BaseAST> > array_dim_list;
     OperandType GetOperandType(std::ostream& out, std::string btype) const override {
-        size_t array_len = array_dim_list.size();
         if (btype == "int") {
             OperandType base_type {OperandTypeEnum::INT};
             for (auto it = array_dim_list.rbegin();
@@ -588,7 +593,7 @@ enum class StmtType {
 class StmtAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
-    std::string l_val;
+    std::unique_ptr<BaseAST> l_val;
     std::unique_ptr<BaseAST> block;
     StmtType type;
     std::unique_ptr<BaseAST> true_stmt;
@@ -596,16 +601,16 @@ public:
     std::unique_ptr<BaseAST> body_stmt;
     void DumpInstructions() const override {
         if (type == StmtType::ASSIGN) {
-            assert(!l_val.empty());
+            // Stmt ::= LVal '=' Exp ';'
+            assert(l_val != nullptr);
 
             Operand temp_var_op = exp->DumpExp();
             // store
             // Find the koopa var name according to l_val
-            std::string koopa_var_name = scope.get_var_by_ident(l_val).koopa_var_name;
-            Operand store_target = Operand(koopa_var_name);
+            Operand l_val_op = l_val->DumpExp();
             auto instr = std::make_unique<Instruction>(OpType::STORE,
                                                        temp_var_op,
-                                                       store_target);
+                                                       l_val_op);
             scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
         } else if (type == StmtType::EXP) {
             // Stmt ::= [Exp] ";"
@@ -894,43 +899,96 @@ public:
 
 class LValAST : public BaseAST {
 public:
-    // TODO: 0: search for how they use lval
     std::string ident;
     std::unique_ptr<BaseAST> array_var_dim_list_ast;
+    Operand DumpExp() const override {
+        const Variable& var = scope.get_var_by_ident(ident);
+        Operand ret_op;
+        if (var.is_const && var.type.type_enum == OperandTypeEnum::INT) {
+            assert(var.const_val);  // the const_val must have been computed
+            ret_op = Operand(var.const_val.value());
+        } else if (var.type.type_enum == OperandTypeEnum::INT) {
+            std::string temp_var_str = "%" + std::to_string(temp_var);
+            ret_op = Operand(temp_var_str);
+            temp_var++;
+            auto instr = std::make_unique<Instruction>(OpType::LOAD,
+                                                       ret_op,
+                                                       Operand(var.koopa_var_name));
+            scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
+        } else if (var.type.type_enum == OperandTypeEnum::ARRAY) {
+            if (array_var_dim_list_ast == nullptr) {
+                throw std::invalid_argument("LValAST::DumpExp: The type indicates l_val is an array, but the expression gives no indices!");
+            }
+            OperandType op_type = var.type;
+            auto& exp_list = array_var_dim_list_ast->GetVector();
+            // if it is an array, there must be at least one dim
+            Operand base_op = Operand(var.koopa_var_name, var.type, true);
+            Operand exp_op = exp_list[0]->DumpExp();
+            auto temp_var_str = "%" + std::to_string(temp_var++);
+            Operand elem_op = Operand(temp_var_str, *(op_type.pointed_type), true);
+            auto instr = std::make_unique<Instruction>(OpType::GETELEMPTR,
+                                                       elem_op,
+                                                       base_op,
+                                                       exp_op);
+            scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
+            for (size_t i = 1; i < exp_list.size(); i++) {
+                base_op = elem_op;
+                exp_op = exp_list[i]->DumpExp();
+                temp_var_str = "%" + std::to_string(temp_var++);
+                elem_op = Operand(temp_var_str, *(base_op.type.pointed_type->pointed_type), true);
+                auto instr = std::make_unique<Instruction>(OpType::GETELEMPTR,
+                                                           elem_op,
+                                                           base_op,
+                                                           exp_op);
+                scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
+            }
+            ret_op = elem_op;
+        } else {
+            std::string error_info = "PrimaryExpAST(DumpExp): unexpected lval type!";
+            throw std::invalid_argument(error_info);
+        }
+        return ret_op;
+    }
+    std::string ComputeConstVal(std::ostream& out) const override {
+        std::string ret_str;
+        if (array_var_dim_list_ast != nullptr) {
+            // array values cannot be computed at compile time
+            // even if it is const
+            throw std::invalid_argument("In LValAST::ComputeConstVal: array_var_dim_list_ast is not nullptr!");
+        }
+        const Variable& var = scope.get_var_by_ident(ident);
+        if (var.type.type_enum == OperandTypeEnum::INT && var.is_const) {
+            assert(var.const_val);  // the const_val must have been computed
+            ret_str = std::to_string(var.const_val.value());
+        } else {
+            // Since we're computing ConstVal, var cannot be used
+            std::string error_info = "PrimaryExpAST(ComputeConstVal): unexpected lval type!";
+            throw std::invalid_argument(error_info);
+        }
+        return ret_str;
+    }
 };
 
 class ArrayVarDimListAST : public BaseAST {
 public:
     std::vector<std::unique_ptr<BaseAST> > exp_list;
+    std::vector<std::unique_ptr<BaseAST> >& GetVector() override {
+        return exp_list;
+    }
 };
 
 class PrimaryExpAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
     std::unique_ptr<int> number;
-    std::string l_val;
+    std::unique_ptr<BaseAST> l_val;
     // Notes: PrimaryExp ::= "(" Exp ")" | LVal | Number;
     Operand DumpExp() const override {
         Operand ret_op;
         if (exp != nullptr) {
             ret_op = exp->DumpExp();
-        } else if (!l_val.empty()) {
-            const Variable& var = scope.get_var_by_ident(l_val);
-            if (var.is_const && var.type.type_enum == OperandTypeEnum::INT) {
-                assert(var.const_val);  // the const_val must have been computed
-                ret_op = Operand(var.const_val.value());
-            } else if (var.type.type_enum == OperandTypeEnum::INT) {
-                std::string temp_var_str = "%" + std::to_string(temp_var);
-                ret_op = Operand(temp_var_str);
-                temp_var++;
-                auto instr = std::make_unique<Instruction>(OpType::LOAD,
-                                                           ret_op,
-                                                           Operand(var.koopa_var_name));
-                scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
-            } else {
-                std::string error_info = "PrimaryExpAST(DumpExp): unexpected lval type!";
-                throw std::invalid_argument(error_info);
-            }
+        } else if (l_val != nullptr) {
+            ret_op = l_val->DumpExp();
         } else if (number != nullptr) {
             ret_op = Operand(*number);
         } else {
@@ -942,16 +1000,8 @@ public:
         std::string ret_str;
         if (exp != nullptr) {
             ret_str = exp->ComputeConstVal(out);
-        } else if (!l_val.empty()) {
-            const Variable& var = scope.get_var_by_ident(l_val);
-            if (var.type.type_enum == OperandTypeEnum::INT && var.is_const) {
-                assert(var.const_val);  // the const_val must have been computed
-                ret_str = std::to_string(var.const_val.value());
-            } else {
-                // Since we're computing ConstVal, var cannot be used
-                std::string error_info = "PrimaryExpAST(ComputeConstVal): unexpected lval type!";
-                throw std::invalid_argument(error_info);
-            }
+        } else if (l_val != nullptr) {
+            ret_str = l_val->ComputeConstVal(out);
         } else if (number != nullptr) {
             ret_str = std::to_string(*number);
         } else {

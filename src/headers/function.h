@@ -171,6 +171,7 @@ public:
                                                                    Operand(val),
                                                                    Operand(koopa_var_name, op_type, true));
                         current_block_ptr->instruction_lists.push_back(std::move(instr));
+                        break;
                     }
                     default: {
                         auto error = "Unhandled type of operand: " + std::to_string(arr_ptr->contained_val.index());
