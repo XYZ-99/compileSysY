@@ -958,10 +958,9 @@ public:
         } else if (var.type.type_enum == OperandTypeEnum::POINTER) {
             OperandType op_type = var.type;
 
-            // if it is a pointer, there must be at least one dim
-            Operand ptr_ptr = Operand(var.koopa_var_name, var.type, true);
+            Operand ptr_ptr = Operand(var.koopa_var_name, var.type, true);  // **[[i32, 3], 2] | ****i32
             auto temp_var0_str = "%" + std::to_string(temp_var++);
-            Operand ptr_to_arr = Operand(temp_var0_str, *(op_type.pointed_type));
+            Operand ptr_to_arr = Operand(temp_var0_str, *(op_type.pointed_type));  // *[[i32, 3], 2] | ***i32
             auto load_instr = std::make_unique<Instruction>(OpType::LOAD,
                                                             ptr_to_arr,
                                                             ptr_ptr);
@@ -972,22 +971,37 @@ public:
             auto& exp_list = array_var_dim_list_ast->GetVector();
             Operand exp_op = exp_list[0]->DumpExp();
             auto temp_var_str = "%" + std::to_string(temp_var++);
-            Operand elem_op = Operand(temp_var_str, ptr_to_arr.type, true);  // getptr returns the same type
+            // We will consider the case for pointer's pointer's pointer, though it is not possible in the test case.
+            Operand elem_op = Operand(temp_var_str, ptr_to_arr.type, true);  // getptr returns the same type, *[[i32, 3], 2] | ***i32
             auto get_ptr_instr = std::make_unique<Instruction>(OpType::GETPTR,
                                                                elem_op,
                                                                ptr_to_arr,
                                                                exp_op);
             scope.current_func_ptr->append_instr_to_current_block(std::move(get_ptr_instr));
             for (size_t i = 1; i < exp_list.size(); i++) {
-                ptr_to_arr = elem_op;
+                ptr_to_arr = elem_op;  // *[[i32, 3], 2] | ***i32
                 exp_op = exp_list[i]->DumpExp();
                 temp_var_str = "%" + std::to_string(temp_var++);
-                elem_op = Operand(temp_var_str, *(ptr_to_arr.type.pointed_type->pointed_type), true);
-                auto instr = std::make_unique<Instruction>(OpType::GETELEMPTR,
-                                                           elem_op,
-                                                           ptr_to_arr,
-                                                           exp_op);
-                scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
+                elem_op = Operand(temp_var_str, *(ptr_to_arr.type.pointed_type->pointed_type), true);  // *[i32, 3] | **i32
+                if (elem_op.type.pointed_type->type_enum == OperandTypeEnum::ARRAY ||
+                elem_op.type.pointed_type->type_enum == OperandTypeEnum::INT) {
+                    auto instr = std::make_unique<Instruction>(OpType::GETELEMPTR,
+                                                               elem_op,
+                                                               ptr_to_arr,
+                                                               exp_op);
+                    scope.current_func_ptr->append_instr_to_current_block(std::move(instr));
+                } else if (elem_op.type.pointed_type->type_enum == OperandTypeEnum::POINTER) {
+                    Operand temp_load_op = Operand("%" + std::to_string(temp_var++), elem_op.type);
+                    auto load_instr = std::make_unique<Instruction>(OpType::LOAD,
+                                                                    temp_load_op,
+                                                                    ptr_to_arr);
+                    scope.current_func_ptr->append_instr_to_current_block(std::move(load_instr));
+                    auto getptr_instr = std::make_unique<Instruction>(OpType::GETPTR,
+                                                                      elem_op,
+                                                                      temp_load_op,
+                                                                      exp_op);
+                    scope.current_func_ptr->append_instr_to_current_block(std::move(getptr_instr));
+                }
             }
             ret_op = elem_op;
         } else {
