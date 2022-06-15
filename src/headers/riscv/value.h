@@ -10,11 +10,12 @@
 class LocalVariable {
 public:
     size_t offset;
-    LocalVariable(size_t _offset): offset(_offset) { }
+    bool is_pointer;
+    LocalVariable(size_t _offset, bool _is_pointer = false): offset(_offset), is_pointer(_is_pointer) { }
 };
 
 enum class ValueType {
-    UNIT,
+    UNIT,  // usually for unassigned expression: ...; 2 + 3; ...;
     CONST,
     LOCAL,
     GLOBAL,
@@ -38,6 +39,9 @@ public:
             type = ValueType::UNIT;
             value = std::monostate();
         }
+    }
+    bool is_pointer() const {
+        return type == ValueType::LOCAL && std::get<LocalVariable>(value).is_pointer;
     }
 };
 
@@ -69,6 +73,23 @@ void load_value_to_reg(std::ostream& out, const Value& val, const std::string& r
         }
         default: {
             throw std::invalid_argument("Unrecognized ValueType in load_value_to_reg!");
+        }
+    }
+}
+
+void load_value_addr_to_reg(std::ostream& out, const Value& val, const std::string& reg) {
+    InstructionPrinter printer = InstructionPrinter(out, reg);
+    switch(val.type) {
+        case ValueType::GLOBAL: {
+            printer.load_addr(reg, std::get<std::string>(val.value));
+            break;
+        }
+        case ValueType::LOCAL: {
+            printer.addi(reg, "sp", int(std::get<LocalVariable>(val.value).offset));
+            break;
+        }
+        default: {
+            throw std::invalid_argument("load_value_addr_to_reg: encountered value without address!");
         }
     }
 }

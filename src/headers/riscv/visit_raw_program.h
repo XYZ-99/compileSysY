@@ -67,6 +67,7 @@ inline bool is_local_instruction(koopa_raw_value_tag_t tag) {
             KOOPA_RVT_LOAD,
             KOOPA_RVT_STORE,
             KOOPA_RVT_GET_PTR,
+            KOOPA_RVT_GET_ELEM_PTR,
             KOOPA_RVT_BINARY,
             KOOPA_RVT_BRANCH,
             KOOPA_RVT_JUMP,
@@ -157,6 +158,13 @@ void Visit(const koopa_raw_value_t& value_ptr, RegisterAllocator& reg_alloc, std
         case KOOPA_RVT_ZERO_INIT:
             out << ".zero " << current_func_ptr->size_of_koopa_type(value_ptr->ty) << std::endl;
             break;
+        case KOOPA_RVT_AGGREGATE: {
+            auto& elems = value_ptr->kind.data.aggregate.elems;
+            for (size_t i = 0; i < elems.len; i++) {
+                Visit(reinterpret_cast<koopa_raw_value_t>(elems.buffer[i]), reg_alloc, out);
+            }
+            break;
+        }
         case KOOPA_RVT_UNDEF:
         case KOOPA_RVT_FUNC_ARG_REF:
         case KOOPA_RVT_BLOCK_ARG_REF:
@@ -168,8 +176,13 @@ void Visit(const koopa_raw_value_t& value_ptr, RegisterAllocator& reg_alloc, std
         case KOOPA_RVT_LOAD: {
             Value load_src = get_koopa_value_Value(value_ptr->kind.data.load.src);
             load_value_to_reg(out, load_src, "t0");
-            auto local_variable = current_func_ptr->get_local_var_info(value_ptr);
 
+            if (load_src.is_pointer()) {
+                // if load_src is a pointer (not alloc), then the real value should be loaded with another instr.
+                format_instr(out, "lw", "t0", "0(t0)");
+            }
+
+            auto local_variable = current_func_ptr->get_local_var_info(value_ptr);
             Value val = Value(local_variable);
             store_reg_to_value(out, val, "t0", "t1");
             break;
@@ -184,7 +197,59 @@ void Visit(const koopa_raw_value_t& value_ptr, RegisterAllocator& reg_alloc, std
             }
             Value dst_value = get_koopa_value_Value(value_ptr->kind.data.store.dest);
 
-            store_reg_to_value(out, dst_value, "t0", "t1");
+            if (!dst_value.is_pointer()) {
+                store_reg_to_value(out, dst_value, "t0", "t1");
+            } else {
+                load_value_to_reg(out, dst_value, "t1");
+                InstructionPrinter printer = InstructionPrinter(out, "t2");
+                printer.store_word("t0", "t1", 0);
+            }
+            break;
+        }
+        case KOOPA_RVT_GET_PTR: {
+            Value src_val = get_koopa_value_Value(value_ptr->kind.data.get_ptr.src);
+            if (src_val.is_pointer()) {
+                load_value_to_reg(out, src_val, "t0");
+            } else {
+                load_value_addr_to_reg(out, src_val, "t0");
+            }
+
+            Value index_val = get_koopa_value_Value(value_ptr->kind.data.get_ptr.index);
+            load_value_to_reg(out, index_val, "t1");
+
+            // getptr returns the same type as the src
+            size_t pointer_data_size = current_func_ptr->size_of_koopa_type(value_ptr->ty->data.pointer.base);
+            InstructionPrinter printer = InstructionPrinter(out, "t2");
+            printer.mul_imm("t1", "t1", int(pointer_data_size));
+            format_instr(out, "add", "t0", "t0", "t1");
+
+            // store the value
+            auto local_var_opt = current_func_ptr->get_local_var_info(value_ptr);
+            Value store_val = Value(local_var_opt);
+            store_reg_to_value(out, store_val, "t0", "t1");
+            break;
+        }
+        case KOOPA_RVT_GET_ELEM_PTR: {
+            Value src_val = get_koopa_value_Value(value_ptr->kind.data.get_elem_ptr.src);
+            if (src_val.is_pointer()) {
+                load_value_to_reg(out, src_val, "t0");
+            } else {
+                load_value_addr_to_reg(out, src_val, "t0");
+            }
+
+            Value index_val = get_koopa_value_Value(value_ptr->kind.data.get_elem_ptr.index);
+            load_value_to_reg(out, index_val, "t1");
+
+            // the size is determined by the returned pointer type
+            size_t pointer_data_size = current_func_ptr->size_of_koopa_type(value_ptr->ty->data.pointer.base);
+            InstructionPrinter printer = InstructionPrinter(out, "t2");
+            printer.mul_imm("t1", "t1", int(pointer_data_size));
+            format_instr(out, "add", "t0", "t0", "t1");
+
+            // store the value
+            auto local_var_opt = current_func_ptr->get_local_var_info(value_ptr);
+            Value store_val = Value(local_var_opt);
+            store_reg_to_value(out, store_val, "t0", "t1");
             break;
         }
         case KOOPA_RVT_BINARY: {

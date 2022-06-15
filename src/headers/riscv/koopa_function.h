@@ -69,11 +69,16 @@ public:
             return std::nullopt;
         }
         size_t local_var_offset = it->second;
+        bool is_pointer = val_ptr->ty->tag == KOOPA_RTT_POINTER;
+        // if the instruction is alloc, we directly store the value in this space of stack
+        is_pointer = (val_ptr->kind.tag != KOOPA_RVT_ALLOC) && is_pointer;
         if (is_leaf_function()) {
             // a leaf function does not have the ra field
-            return LocalVariable(get_stack_frame_size() - local_vars_size + local_var_offset);
+            return LocalVariable(get_stack_frame_size() - local_vars_size + local_var_offset,
+                                 is_pointer);
         } else {
-            return LocalVariable(get_stack_frame_size() - local_vars_size - 4 + local_var_offset);
+            return LocalVariable(get_stack_frame_size() - local_vars_size - 4 + local_var_offset,
+                                 is_pointer);
         }
     }
 
@@ -96,6 +101,9 @@ public:
             case KOOPA_RTT_POINTER:
             case KOOPA_RTT_FUNCTION:
                 return 4;
+            case KOOPA_RTT_ARRAY: {
+                return type->data.array.len * size_of_koopa_type(type->data.array.base);
+            }
             default:
                 throw std::invalid_argument("size_of_koopa_type: Not implemented type!");
         }
@@ -107,6 +115,7 @@ public:
             // store an alloc pointer
             local_vars_size += size_of_koopa_type(value_ptr->ty->data.pointer.base);
         } else {
+            // for all other types, directly store them in stack
             local_vars_size += size_of_koopa_type(value_ptr->ty);
         }
     }

@@ -24,6 +24,20 @@ inline bool within_12(int x) {
     return (x >= - (1 << 11)) && (x < (1 << 11));
 }
 
+inline bool is_positive_and_power_of_2(int x) {
+    return (x > 0) && ((x & (x - 1)) == 0);
+}
+
+inline int log_2(int x) {
+    // WARNING: Use this only if you check is_positive_and_power_of_2.
+    int res = 0;
+    while (x > 1) {
+        x = x >> 1;
+        res++;
+    }
+    return res;
+}
+
 class InstructionPrinter {
 public:
     std::ostream& out;
@@ -62,6 +76,21 @@ public:
         } else {
             load_imm(reg, imm);
             format_instr(out, "add", dst, src, reg);
+        }
+    }
+
+    void slli(std::string dst, std::string src, int imm) {
+        format_instr(out, "slli", dst, src, std::to_string(imm));
+    }
+
+    void mul_imm(std::string dst, std::string src, int imm) {
+        if (is_positive_and_power_of_2(imm)) {
+            // use slli
+            slli(dst, src, log_2(imm));
+        } else {
+            // use mul
+            load_imm(reg, imm);
+            format_instr(out, "mul", dst, src, reg);
         }
     }
 
