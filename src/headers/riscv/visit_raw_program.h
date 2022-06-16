@@ -12,6 +12,7 @@
 #include "value.h"
 #include "koopa_function.h"
 
+#define DUMMY_JUMP_BLOCK_BASENAME "dummy_jump_block"
 
 void Visit(const koopa_raw_program_t &program, RegisterAllocator &reg_alloc, std::ostream& out = std::cout);
 void Visit(const koopa_raw_slice_t &slice, RegisterAllocator &reg_alloc, std::ostream& out = std::cout);
@@ -22,6 +23,7 @@ std::string Visit(const koopa_raw_binary_t &binary, RegisterAllocator &reg_alloc
 std::unordered_map<koopa_raw_value_t, std::string> valueSymbolName;
 std::unique_ptr<KoopaFunction> current_func_ptr;
 Value get_koopa_value_Value(const koopa_raw_value_t &value);
+size_t dummy_jump_block_cnt = 0;
 
 
 void Visit(const koopa_raw_program_t &program, RegisterAllocator &reg_alloc, std::ostream& out) {
@@ -268,7 +270,11 @@ void Visit(const koopa_raw_value_t& value_ptr, RegisterAllocator& reg_alloc, std
             std::string true_block_name = current_func_ptr->get_riscv_block_name(koopa_branch.true_bb);
             std::string false_block_name = current_func_ptr->get_riscv_block_name(koopa_branch.false_bb);
 
-            format_instr(out, "bnez", "t0", true_block_name);
+//            format_instr(out, "bnez", "t0", true_block_name);
+            std::string dummy_jump_block_str = DUMMY_JUMP_BLOCK_BASENAME + std::to_string(dummy_jump_block_cnt++);
+            format_instr(out, "beqz", "t0", dummy_jump_block_str);
+            format_instr(out, "j", true_block_name);
+            out << dummy_jump_block_str << ":" << std::endl;
             format_instr(out, "j", false_block_name);
             break;
         }
