@@ -46,7 +46,7 @@ using namespace std;
 %type <ast_val> Decl ConstDecl ConstDef ArrayDimList ConstDefList ConstInitVal ConstInitValList VarDecl
 %type <ast_val> VarDefList VarDef InitVal InitValList ArrayVarDimList
 %type <ast_val> BlockItem BlockItemList Block Stmt Exp UnaryExp FuncRParamList PrimaryExp MulExp
-%type <ast_val> AddExp RelExp EqExp LAndExp LOrExp ConstExp LVal  // TODO: 0: change wherever LVal occurs
+%type <ast_val> AddExp RelExp EqExp LAndExp LOrExp ConstExp LVal
 %type <str_val> AddOp MulOp /*BType*/
 %type <int_val> Number UnaryOp
 
